@@ -120,6 +120,7 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [muted, setMuted] = useState<boolean>(() => isSoundMuted());
   const [roomStudentName, setRoomStudentName] = useState('');
+  const lessonSurfaceRef = useRef<HTMLDivElement>(null);
 
   const collaboration = useLessonRoom({
     onState: incoming => {
@@ -176,9 +177,14 @@ export default function App() {
   }, [collaboration.configured, collaboration.roomId]);
 
   useEffect(() => {
-    if (!collaboration.roomId || collaboration.status !== 'connected') return;
+    const surface = lessonSurfaceRef.current;
+    if (!surface || !collaboration.roomId || collaboration.status !== 'connected') return;
     const publishPointer = (event: PointerEvent, clickAt?: number) => {
-      collaboration.publishCursor(event.clientX / window.innerWidth, event.clientY / window.innerHeight, clickAt);
+      const bounds = surface.getBoundingClientRect();
+      const x = (event.clientX - bounds.left) / bounds.width;
+      const y = (event.clientY - bounds.top) / bounds.height;
+      if (x < 0 || x > 1 || y < 0 || y > 1) return;
+      collaboration.publishCursor(x, y, clickAt);
     };
     const onMove = (event: PointerEvent) => publishPointer(event);
     const onDown = (event: PointerEvent) => {
@@ -187,11 +193,14 @@ export default function App() {
       const label = target?.textContent?.trim().replace(/\s+/g, ' ').slice(0, 70);
       if (label) collaboration.publishAction(label);
     };
-    window.addEventListener('pointermove', onMove, { passive: true });
-    window.addEventListener('pointerdown', onDown, { passive: true });
+    const onLeave = () => collaboration.publishCursor(-1, -1);
+    surface.addEventListener('pointermove', onMove, { passive: true });
+    surface.addEventListener('pointerdown', onDown, { passive: true });
+    surface.addEventListener('pointerleave', onLeave, { passive: true });
     return () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerdown', onDown);
+      surface.removeEventListener('pointermove', onMove);
+      surface.removeEventListener('pointerdown', onDown);
+      surface.removeEventListener('pointerleave', onLeave);
     };
   }, [collaboration.roomId, collaboration.status]);
 
@@ -353,7 +362,8 @@ export default function App() {
         {screen === 'student' && <StudentProfile name={studentName} attempts={studentAttempts} onNameChange={handleStudentName} onBack={() => setScreen('library')} />}
         {screen === 'builder' && <LessonBuilder key={lesson.id} initialLesson={lesson} games={games} isEditing={builderEditing} onBack={() => setScreen('library')} onSave={handleSaveBuiltLesson} />}
         {screen === 'edit' && <LessonEditor lesson={lesson} onSave={handleSaveLesson} onClose={() => setScreen('play')} activeStepTab={editorStartTab} />}
-        {screen === 'play' && <div className="w-full max-w-[650px] bg-white/95 backdrop-blur-md rounded-3xl shadow-2xl border-2 border-pink-200 p-4 md:p-7 relative text-center">
+        {screen === 'play' && <div ref={lessonSurfaceRef} className="w-full max-w-[650px] bg-white/95 backdrop-blur-md rounded-3xl shadow-2xl border-2 border-pink-200 p-4 md:p-7 relative text-center">
+          {collaboration.remoteCursor && collaboration.remoteCursor.x >= 0 && collaboration.remoteCursor.x <= 1 && collaboration.remoteCursor.y >= 0 && collaboration.remoteCursor.y <= 1 && <div className={`pointer-events-none absolute z-[60] transition-[left,top] duration-75 ${collaboration.remoteCursor.role === 'teacher' ? 'text-violet-700' : 'text-emerald-700'}`} style={{ left: `${collaboration.remoteCursor.x * 100}%`, top: `${collaboration.remoteCursor.y * 100}%` }}><MousePointer2 className={`h-6 w-6 drop-shadow ${collaboration.remoteCursor.role === 'teacher' ? 'fill-violet-300' : 'fill-emerald-300'}`} /><span className={`ml-1 rounded-full px-2 py-0.5 text-[10px] font-black text-white shadow ${collaboration.remoteCursor.role === 'teacher' ? 'bg-violet-600' : 'bg-emerald-600'}`}>{collaboration.remoteCursor.name}{collaboration.remoteCursor.clickAt && Date.now() - collaboration.remoteCursor.clickAt < 700 ? ' · клик' : ''}</span></div>}
           <div className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-xs font-black text-amber-700">⭐ {score} баллов</div>
           <div className="flex justify-center items-center gap-2 mb-5">{orderedGames.map((game, idx) => { const isActive = currentStep === idx; const isCompleted = currentStep > idx; return <button key={`${game.id}-${idx}`} onClick={() => handleGoToStep(idx)} title={`${idx + 1}. ${game.title}`} className={`w-7 h-7 md:w-8 md:h-8 rounded-full font-black text-xs md:text-sm flex items-center justify-center transition-all duration-200 ${isActive ? 'bg-pink-500 text-white scale-110 shadow-md ring-3 ring-pink-200' : isCompleted ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-600 hover:bg-pink-100'}`}>{idx + 1}</button>; })}</div>
           <div className="min-h-[360px] flex flex-col items-center justify-center">
@@ -374,8 +384,6 @@ export default function App() {
       </main>
 
       {showCompletion && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"><div className="w-full max-w-sm rounded-3xl border-4 border-pink-200 bg-white p-7 text-center shadow-2xl"><div className="text-5xl">🏆</div><h2 className="mt-3 text-2xl font-black text-pink-600">Урок завершён!</h2><p className="mt-2 text-sm font-semibold text-slate-600">{displayStudentName} заработал(а) <strong className="text-amber-600">{score} баллов</strong>. {collaboration.role === 'student' ? 'Учитель видит результат.' : 'Результат добавлен в карточку ученика.'}</p><button onClick={() => { setShowCompletion(false); setScreen(collaboration.role === 'student' ? 'play' : 'student'); }} className="mt-5 w-full rounded-xl bg-gradient-to-r from-pink-500 to-purple-600 px-4 py-3 text-sm font-black text-white">{collaboration.role === 'student' ? 'Вернуться к уроку' : 'Посмотреть прогресс'}</button><button onClick={() => { setShowCompletion(false); void collaboration.leave(); setScreen('library'); }} className="mt-2 w-full rounded-xl bg-slate-100 px-4 py-2.5 text-xs font-black text-slate-600">Выйти к урокам</button></div></div>}
-
-      {collaboration.remoteCursor && <div className={`pointer-events-none fixed z-[60] transition-[left,top] duration-75 ${collaboration.remoteCursor.role === 'teacher' ? 'text-violet-700' : 'text-emerald-700'}`} style={{ left: `${collaboration.remoteCursor.x * 100}%`, top: `${collaboration.remoteCursor.y * 100}%` }}><MousePointer2 className={`h-6 w-6 drop-shadow ${collaboration.remoteCursor.role === 'teacher' ? 'fill-violet-300' : 'fill-emerald-300'}`} /><span className={`ml-1 rounded-full px-2 py-0.5 text-[10px] font-black text-white shadow ${collaboration.remoteCursor.role === 'teacher' ? 'bg-violet-600' : 'bg-emerald-600'}`}>{collaboration.remoteCursor.name}{collaboration.remoteCursor.clickAt && Date.now() - collaboration.remoteCursor.clickAt < 700 ? ' · клик' : ''}</span></div>}
 
       {screen === 'play' && <footer className="mt-4 text-center text-xs font-semibold text-slate-500/90 flex flex-wrap items-center justify-center gap-3"><span>🌟 Интерактивный урок обучения грамоте и чтению</span><span>•</span><button onClick={() => { const reset = cloneLesson(defaultLessonY); handleSaveLesson(reset); setCurrentStep(0); }} className="text-pink-600 hover:underline">Сбросить к образцу</button></footer>}
     </div>
