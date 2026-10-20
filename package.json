@@ -1,0 +1,32 @@
+{
+  "name": "chitalochka-reading-builder",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port=3000 --host=127.0.0.1",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.118.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "canvas-confetti": "^1.9.4",
+    "lucide-react": "^0.546.0",
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1",
+    "tailwindcss": "^4.3.3"
+  },
+  "devDependencies": {
+    "@types/canvas-confetti": "^1.9.0",
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "autoprefixer": "^10.4.21",
+    "esbuild": "^0.25.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0"
+  }
+}

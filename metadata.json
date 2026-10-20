@@ -1,0 +1,6 @@
+{
+  "name": "Конструктор уроков грамоты и чтения",
+  "description": "Интерактивная игра по обучению грамоте и чтению с полноценным визуальным редактором всех заданий, уровней и слов.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
