@@ -24,12 +24,24 @@ export interface RoomCursor {
   clickAt?: number;
 }
 
+export interface RoomInteraction {
+  role: RoomRole;
+  name: string;
+  type: 'pointerdown' | 'pointermove' | 'pointerup';
+  path: number[];
+  x: number;
+  y: number;
+  pointerType: string;
+  button: number;
+}
+
 export interface LessonRoomCallbacks {
   onState?: (state: ClassroomState) => void;
   onProgress?: (score: number) => void;
   onStep?: (step: number) => void;
   onMembers?: (members: RoomMember[]) => void;
   onCursor?: (cursor: RoomCursor | null) => void;
+  onInteraction?: (interaction: RoomInteraction) => void;
   onAction?: (action: { role: RoomRole; name: string; label: string }) => void;
   onStatus?: (status: 'connecting' | 'connected' | 'disconnected' | 'error', message?: string) => void;
 }
@@ -50,6 +62,7 @@ export class LessonRoom {
   private callbacks: LessonRoomCallbacks = {};
   private latestState: ClassroomState | null = null;
   private broadcastTimer = 0;
+  private interactionTimer = 0;
 
   setCallbacks(callbacks: LessonRoomCallbacks) {
     this.callbacks = callbacks;
@@ -90,6 +103,7 @@ export class LessonRoom {
       .on('broadcast', { event: 'student-progress' }, ({ payload }) => this.callbacks.onProgress?.(Number(payload.score) || 0))
       .on('broadcast', { event: 'student-step' }, ({ payload }) => this.callbacks.onStep?.(Number(payload.step) || 0))
       .on('broadcast', { event: 'cursor' }, ({ payload }) => this.callbacks.onCursor?.(payload as RoomCursor))
+      .on('broadcast', { event: 'interaction' }, ({ payload }) => this.callbacks.onInteraction?.(payload as RoomInteraction))
       .on('broadcast', { event: 'action' }, ({ payload }) => this.callbacks.onAction?.(payload as { role: RoomRole; name: string; label: string }))
       .on('broadcast', { event: 'state-request' }, () => {
         if (this.member?.role === 'teacher' && this.latestState) void this.publishState(this.latestState);
@@ -152,6 +166,18 @@ export class LessonRoom {
       type: 'broadcast',
       event: 'cursor',
       payload: { ...this.member, x, y, clickAt } satisfies RoomCursor,
+    });
+  }
+
+  publishInteraction(interaction: Omit<RoomInteraction, 'role' | 'name'>) {
+    if (!this.channel || !this.member) return;
+    const now = Date.now();
+    if (interaction.type === 'pointermove' && now - this.interactionTimer < 45) return;
+    this.interactionTimer = now;
+    void this.channel.send({
+      type: 'broadcast',
+      event: 'interaction',
+      payload: { ...this.member, ...interaction } satisfies RoomInteraction,
     });
   }
 

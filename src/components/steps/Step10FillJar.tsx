@@ -1,19 +1,21 @@
 import { PointerEvent as ReactPointerEvent, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Check, RotateCcw, Sparkles } from 'lucide-react';
 import { Step10Config } from '../../types';
+import { createSeededRandom } from '../../utils/seededRandom';
 
 type LetterTile = { id: string; letter: string; x: number; y: number; rotation: number };
 type DragState = { id: string; pointerId: number; startX: number; startY: number; tileX: number; tileY: number; width: number; height: number; moved: boolean };
-type Props = { config: Step10Config; onPrev: () => void; onNext: () => void; isLastGame: boolean; onCorrectAnswer?: (answerId: string, points?: number) => void };
+type Props = { config: Step10Config; onPrev: () => void; onNext: () => void; isLastGame: boolean; onCorrectAnswer?: (answerId: string, points?: number) => void; sharedSeed?: string };
 const RUSSIAN_ALPHABET = [...'АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ'];
 
-function generateLetterScatter(target: string, count: number, seed: number): LetterTile[] {
+function generateLetterScatter(target: string, count: number, seed: string): LetterTile[] {
+  const random = createSeededRandom(seed);
   const targetUpper = [...target.toLocaleUpperCase('ru-RU')][0] || 'А';
   const distractorCount = Math.max(12, Math.ceil(count * 0.75));
   const letters = Array.from({ length: count }, (_, index) => index % 2 === 0 ? targetUpper : targetUpper.toLocaleLowerCase('ru-RU'));
   for (let index = 0; index < distractorCount; index += 1) {
     const candidates = RUSSIAN_ALPHABET.filter(letter => letter !== targetUpper);
-    const distractor = candidates[Math.floor(Math.random() * candidates.length)];
+    const distractor = candidates[Math.floor(random() * candidates.length)];
     letters.push(index % 2 === 0 ? distractor : distractor.toLocaleLowerCase('ru-RU'));
   }
   const tiles = letters.map((letter, index) => {
@@ -21,19 +23,19 @@ function generateLetterScatter(target: string, count: number, seed: number): Let
     return {
       id: `jar-letter-${seed}-${index}`,
       letter,
-      x: isLeft ? 2 + Math.random() * 18 : 80 + Math.random() * 7,
-      y: 3 + Math.random() * 84,
-      rotation: -9 + Math.random() * 18,
+      x: isLeft ? 2 + random() * 18 : 80 + random() * 7,
+      y: 3 + random() * 84,
+      rotation: -9 + random() * 18,
     };
   });
   for (let index = tiles.length - 1; index > 0; index -= 1) {
-    const randomIndex = Math.floor(Math.random() * (index + 1));
+    const randomIndex = Math.floor(random() * (index + 1));
     [tiles[index], tiles[randomIndex]] = [tiles[randomIndex], tiles[index]];
   }
   return tiles;
 }
 
-export function Step10FillJar({ config, onPrev, onNext, isLastGame, onCorrectAnswer }: Props) {
+export function Step10FillJar({ config, onPrev, onNext, isLastGame, onCorrectAnswer, sharedSeed }: Props) {
   const targetLetter = [...(config.targetLetter || 'А').toLocaleUpperCase('ru-RU')][0] || 'А';
   const targetCount = Math.max(2, Math.min(30, Math.floor(config.targetCount || 16)));
   const [shuffleSeed, setShuffleSeed] = useState(0);
@@ -46,7 +48,7 @@ export function Step10FillJar({ config, onPrev, onNext, isLastGame, onCorrectAns
   const jarRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const suppressClickRef = useRef<string | null>(null);
-  const tiles = useMemo(() => generateLetterScatter(targetLetter, targetCount, shuffleSeed), [targetLetter, targetCount, shuffleSeed]);
+  const tiles = useMemo(() => generateLetterScatter(targetLetter, targetCount, `${sharedSeed || crypto.randomUUID()}:${shuffleSeed}:${targetLetter}:${targetCount}`), [targetLetter, targetCount, shuffleSeed, sharedSeed]);
   const placedLetters = placedIds.map(id => tiles.find(tile => tile.id === id)?.letter || '');
   const completed = placedIds.length === targetCount;
   const remainingTiles = tiles.map((tile, index) => ({ tile, index })).filter(({ tile }) => !placedIds.includes(tile.id));
@@ -82,7 +84,7 @@ export function Step10FillJar({ config, onPrev, onNext, isLastGame, onCorrectAns
       height: bounds.height,
       moved: false,
     };
-    event.currentTarget.setPointerCapture(event.pointerId);
+    if (event.isTrusted) event.currentTarget.setPointerCapture(event.pointerId);
     setDraggingId(tile.id);
   };
 

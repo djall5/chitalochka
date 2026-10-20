@@ -2,12 +2,14 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Step2Config } from '../../types';
 import { formatTextWithColors, playChime, speakRussianText } from '../../utils/phonetics';
 import { RotateCcw, ArrowRight, ArrowLeft, Volume2 } from 'lucide-react';
+import { createSeededRandom } from '../../utils/seededRandom';
 
 interface Props {
   config: Step2Config;
   onNext: () => void;
   onPrev: () => void;
   onCorrectAnswer?: (answerId: string, points?: number) => void;
+  sharedSeed?: string;
 }
 
 interface FallingItem {
@@ -19,7 +21,7 @@ interface FallingItem {
   isCaught: boolean;
 }
 
-export const Step2Falling: React.FC<Props> = ({ config, onNext, onPrev, onCorrectAnswer }) => {
+export const Step2Falling: React.FC<Props> = ({ config, onNext, onPrev, onCorrectAnswer, sharedSeed }) => {
   const [caught, setCaught] = useState(0);
   const [missed, setMissed] = useState(0);
   const [currentItem, setCurrentItem] = useState<FallingItem | null>(null);
@@ -41,7 +43,12 @@ export const Step2Falling: React.FC<Props> = ({ config, onNext, onPrev, onCorrec
   // Initialize game
   const initGame = useCallback(() => {
     // Shuffle syllables
-    const shuffled = [...config.syllables].sort(() => Math.random() - 0.5);
+    const shuffled = [...config.syllables];
+    const random = sharedSeed ? createSeededRandom(`${sharedSeed}:falling-pool`) : Math.random;
+    for (let index = shuffled.length - 1; index > 0; index -= 1) {
+      const randomIndex = Math.floor(random() * (index + 1));
+      [shuffled[index], shuffled[randomIndex]] = [shuffled[randomIndex], shuffled[index]];
+    }
     // Limit to targetCatchCount if provided
     const pool = shuffled.slice(0, Math.max(config.targetCatchCount, 6));
     setRemainingPool(pool);
@@ -49,7 +56,7 @@ export const Step2Falling: React.FC<Props> = ({ config, onNext, onPrev, onCorrec
     setMissed(0);
     setIsFinished(false);
     setCurrentItem(null);
-  }, [config.syllables, config.targetCatchCount]);
+  }, [config.syllables, config.targetCatchCount, sharedSeed]);
 
   useEffect(() => {
     initGame();
@@ -65,9 +72,8 @@ export const Step2Falling: React.FC<Props> = ({ config, onNext, onPrev, onCorrec
 
     const arena = arenaRef.current;
     const arenaWidth = arena ? arena.clientWidth : 320;
-    const randomX = Math.floor(Math.random() * Math.max(arenaWidth - 100, 60)) + 40;
-
     const nextSyllable = remainingPool[0];
+    const randomX = Math.floor((sharedSeed ? createSeededRandom(`${sharedSeed}:falling:${remainingPool.length}:${nextSyllable}`)() : Math.random()) * Math.max(arenaWidth - 100, 60)) + 40;
     setRemainingPool(prev => prev.slice(1));
 
     isCaughtRef.current = false;
@@ -80,7 +86,7 @@ export const Step2Falling: React.FC<Props> = ({ config, onNext, onPrev, onCorrec
       speed: speedPxPerSec,
       isCaught: false,
     });
-  }, [remainingPool, speedPxPerSec]);
+  }, [remainingPool, speedPxPerSec, sharedSeed]);
 
   // If no item and not finished, spawn next
   useEffect(() => {

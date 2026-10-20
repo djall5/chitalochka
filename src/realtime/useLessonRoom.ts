@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ClassroomState, LessonRoom, RoomCursor, RoomMember, RoomRole } from './lessonRoom';
+import { ClassroomState, LessonRoom, RoomCursor, RoomInteraction, RoomMember, RoomRole } from './lessonRoom';
 
 export function useLessonRoom(callbacks: {
   onState: (state: ClassroomState) => void;
   onProgress: (score: number) => void;
   onStep: (step: number) => void;
   onAction: (action: { role: RoomRole; name: string; label: string }) => void;
+  onInteraction: (interaction: RoomInteraction) => void;
 }) {
   const roomRef = useRef<LessonRoom | null>(null);
   if (!roomRef.current) roomRef.current = new LessonRoom();
@@ -31,6 +32,7 @@ export function useLessonRoom(callbacks: {
         setRemoteCursor(previous => previous && !connected.some(member => member.id === previous.id) ? null : previous);
       },
       onCursor: cursor => setRemoteCursor(cursor),
+      onInteraction: interaction => callbacksRef.current.onInteraction(interaction),
       onAction: action => { setLastAction(action); callbacksRef.current.onAction(action); },
       onStatus: (next, message) => {
         setStatus(next);
@@ -83,6 +85,7 @@ export function useLessonRoom(callbacks: {
     publishProgress: (score: number) => room.publishProgress(score),
     publishStep: (step: number) => room.publishStep(step),
     publishCursor: (x: number, y: number, clickAt?: number) => room.publishCursor(x, y, clickAt),
+    publishInteraction: (interaction: Omit<RoomInteraction, 'role' | 'name'>) => room.publishInteraction(interaction),
     publishAction: (label: string) => room.publishAction(label),
   };
 }

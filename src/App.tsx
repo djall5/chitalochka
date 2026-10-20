@@ -19,7 +19,7 @@ import { StudentSelection } from './components/StudentSelection';
 import { cloneLesson, DEFAULT_GAME_LIBRARY, GameLibraryItem, GameStepKey, gameStepIndex, lessonGameOrder } from './gameLibrary';
 import { playTransitionSound, isSoundMuted, toggleSound } from './utils/audio';
 import { ClassroomPanel } from './realtime/ClassroomPanel';
-import { RoomRole } from './realtime/lessonRoom';
+import { RoomInteraction, RoomRole } from './realtime/lessonRoom';
 import { useLessonRoom } from './realtime/useLessonRoom';
 
 const ACTIVE_LESSON_KEY = 'literacy_game_lesson_v2';
@@ -96,6 +96,28 @@ function readGames(): GameLibraryItem[] {
   return DEFAULT_GAME_LIBRARY;
 }
 
+function getElementPath(root: Element, target: Element): number[] | null {
+  const path: number[] = [];
+  let current: Element | null = target;
+  while (current && current !== root) {
+    const parent: Element | null = current.parentElement;
+    if (!parent) return null;
+    path.unshift(Array.prototype.indexOf.call(parent.children, current) as number);
+    current = parent;
+  }
+  return current === root ? path : null;
+}
+
+function findElementAtPath(root: Element, path: number[]) {
+  let current = root;
+  for (const index of path) {
+    const next = current.children.item(index);
+    if (!next) return null;
+    current = next;
+  }
+  return current;
+}
+
 type Screen = 'library' | 'builder' | 'play' | 'edit' | 'student' | 'student-select';
 
 export default function App() {
@@ -121,6 +143,7 @@ export default function App() {
   const [muted, setMuted] = useState<boolean>(() => isSoundMuted());
   const [roomStudentName, setRoomStudentName] = useState('');
   const lessonSurfaceRef = useRef<HTMLDivElement>(null);
+  const activePointerId = useRef<number | null>(null);
 
   const collaboration = useLessonRoom({
     onState: incoming => {
@@ -134,6 +157,23 @@ export default function App() {
     onProgress: setScore,
     onStep: setCurrentStep,
     onAction: () => {},
+    onInteraction: interaction => {
+      const surface = lessonSurfaceRef.current;
+      if (!surface) return;
+      const target = findElementAtPath(surface, interaction.path);
+      if (!(target instanceof HTMLElement)) return;
+      const bounds = surface.getBoundingClientRect();
+      const clientX = bounds.left + interaction.x * bounds.width;
+      const clientY = bounds.top + interaction.y * bounds.height;
+      const isDown = interaction.type === 'pointerdown';
+      const isUp = interaction.type === 'pointerup';
+      const buttons = isDown || (!isUp && interaction.type === 'pointermove') ? 1 : 0;
+      const eventOptions = { bubbles: true, cancelable: true, clientX, clientY, pointerId: 1, pointerType: interaction.pointerType, button: interaction.button, buttons, isPrimary: true };
+      target.dispatchEvent(new PointerEvent(interaction.type, eventOptions));
+      const mouseType = interaction.type === 'pointerdown' ? 'mousedown' : interaction.type === 'pointermove' ? 'mousemove' : 'mouseup';
+      target.dispatchEvent(new MouseEvent(mouseType, { bubbles: true, cancelable: true, clientX, clientY, button: interaction.button, buttons }));
+      if (isUp) target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX, clientY, button: interaction.button }));
+    },
   });
 
   const order = lessonGameOrder(lesson);
@@ -186,20 +226,46 @@ export default function App() {
       if (x < 0 || x > 1 || y < 0 || y > 1) return;
       collaboration.publishCursor(x, y, clickAt);
     };
-    const onMove = (event: PointerEvent) => publishPointer(event);
+    const publishInteraction = (event: PointerEvent, type: RoomInteraction['type']) => {
+      if (!event.isTrusted || !(event.target instanceof Element)) return;
+      const bounds = surface.getBoundingClientRect();
+      const path = getElementPath(surface, event.target);
+      if (!path) return;
+      const x = (event.clientX - bounds.left) / bounds.width;
+      const y = (event.clientY - bounds.top) / bounds.height;
+      if (x < 0 || x > 1 || y < 0 || y > 1) return;
+      collaboration.publishInteraction({ type, path, x, y, pointerType: event.pointerType, button: event.button });
+    };
+    const onMove = (event: PointerEvent) => {
+      if (!event.isTrusted) return;
+      publishPointer(event);
+      if (activePointerId.current === event.pointerId) publishInteraction(event, 'pointermove');
+    };
     const onDown = (event: PointerEvent) => {
+      if (!event.isTrusted) return;
+      activePointerId.current = event.pointerId;
       publishPointer(event, Date.now());
+      publishInteraction(event, 'pointerdown');
       const target = event.target instanceof Element ? event.target.closest('button,[role="button"]') : null;
       const label = target?.textContent?.trim().replace(/\s+/g, ' ').slice(0, 70);
       if (label) collaboration.publishAction(label);
     };
+    const onUp = (event: PointerEvent) => {
+      if (!event.isTrusted || activePointerId.current !== event.pointerId) return;
+      publishInteraction(event, 'pointerup');
+      activePointerId.current = null;
+    };
     const onLeave = () => collaboration.publishCursor(-1, -1);
     surface.addEventListener('pointermove', onMove, { passive: true });
     surface.addEventListener('pointerdown', onDown, { passive: true });
+    surface.addEventListener('pointerup', onUp, { passive: true });
+    surface.addEventListener('pointercancel', onUp, { passive: true });
     surface.addEventListener('pointerleave', onLeave, { passive: true });
     return () => {
       surface.removeEventListener('pointermove', onMove);
       surface.removeEventListener('pointerdown', onDown);
+      surface.removeEventListener('pointerup', onUp);
+      surface.removeEventListener('pointercancel', onUp);
       surface.removeEventListener('pointerleave', onLeave);
     };
   }, [collaboration.roomId, collaboration.status]);
@@ -368,15 +434,15 @@ export default function App() {
           <div className="flex justify-center items-center gap-2 mb-5">{orderedGames.map((game, idx) => { const isActive = currentStep === idx; const isCompleted = currentStep > idx; return <button key={`${game.id}-${idx}`} onClick={() => handleGoToStep(idx)} title={`${idx + 1}. ${game.title}`} className={`w-7 h-7 md:w-8 md:h-8 rounded-full font-black text-xs md:text-sm flex items-center justify-center transition-all duration-200 ${isActive ? 'bg-pink-500 text-white scale-110 shadow-md ring-3 ring-pink-200' : isCompleted ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-600 hover:bg-pink-100'}`}>{idx + 1}</button>; })}</div>
           <div className="min-h-[360px] flex flex-col items-center justify-center">
             {currentGame?.stepKey === 'step1' && <Step1Coloring config={lesson.step1} onNext={goNext} onCorrectAnswer={(id, count) => handleCorrectAnswer(id, (count || 1) * 10)} onEditStep={() => handleOpenStepInEditor(currentStep)} />}
-            {currentGame?.stepKey === 'step2' && <Step2Falling config={lesson.step2} onPrev={goPrevious} onNext={goNext} onCorrectAnswer={handleCorrectAnswer} />}
+            {currentGame?.stepKey === 'step2' && <Step2Falling config={lesson.step2} onPrev={goPrevious} onNext={goNext} onCorrectAnswer={handleCorrectAnswer} sharedSeed={collaboration.roomId || undefined} />}
             {currentGame?.stepKey === 'step3' && <Step3Maze config={lesson.step3} onPrev={goPrevious} onNext={goNext} onCorrectAnswer={handleCorrectAnswer} />}
             {currentGame?.stepKey === 'step4' && <Step4Drawing config={lesson.step4} onPrev={goPrevious} onNext={goNext} />}
             {currentGame?.stepKey === 'step5' && <Step5WordFill config={lesson.step5} onPrev={goPrevious} onNext={goNext} onCorrectAnswer={handleCorrectAnswer} />}
             {currentGame?.stepKey === 'step6' && <Step6ReadingCards config={lesson.step6} onPrev={goPrevious} onCorrectAnswer={handleCorrectAnswer} />}
             {currentGame?.stepKey === 'step7' && <Step7TextReading config={lesson.step7} onPrev={goPrevious} onNext={goNext} onCorrectAnswer={handleCorrectAnswer} />}
             {currentGame?.stepKey === 'step8' && <Step8BuildHouse config={lesson.step8} onPrev={goPrevious} onNext={goNext} isLastGame={currentStep === orderedGames.length - 1} onCorrectAnswer={handleCorrectAnswer} />}
-            {currentGame?.stepKey === 'step9' && <Step9Memory config={lesson.step9} onPrev={goPrevious} onNext={goNext} isLastGame={currentStep === orderedGames.length - 1} onCorrectAnswer={handleCorrectAnswer} />}
-            {currentGame?.stepKey === 'step10' && <Step10FillJar config={lesson.step10} onPrev={goPrevious} onNext={goNext} isLastGame={currentStep === orderedGames.length - 1} onCorrectAnswer={handleCorrectAnswer} />}
+            {currentGame?.stepKey === 'step9' && <Step9Memory config={lesson.step9} onPrev={goPrevious} onNext={goNext} isLastGame={currentStep === orderedGames.length - 1} onCorrectAnswer={handleCorrectAnswer} sharedSeed={collaboration.roomId || undefined} />}
+            {currentGame?.stepKey === 'step10' && <Step10FillJar config={lesson.step10} onPrev={goPrevious} onNext={goNext} isLastGame={currentStep === orderedGames.length - 1} onCorrectAnswer={handleCorrectAnswer} sharedSeed={collaboration.roomId || undefined} />}
           </div>
           {currentGame && currentStep === orderedGames.length - 1 && <div className="mt-4 flex justify-center"><button onClick={handleFinishLesson} className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-6 py-3 text-sm font-black text-white shadow-md transition hover:brightness-105 active:scale-[.98]"><Award className="h-4 w-4" />Завершить урок</button></div>}
           {currentGame && <div className="mt-4 text-[10px] font-bold text-slate-400">{currentStep + 1} из {orderedGames.length} · {currentGame.title}</div>}

@@ -1,18 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Check, RotateCcw, Sparkles } from 'lucide-react';
 import { Step9Config } from '../../types';
+import { createSeededRandom } from '../../utils/seededRandom';
 
 type MemoryCard = { id: string; pairId: string; face: string; kind: 'text' | 'bonus' | 'empty' };
-type Props = { config: Step9Config; onPrev: () => void; onNext: () => void; isLastGame: boolean; onCorrectAnswer?: (answerId: string, points?: number) => void };
+type Props = { config: Step9Config; onPrev: () => void; onNext: () => void; isLastGame: boolean; onCorrectAnswer?: (answerId: string, points?: number) => void; sharedSeed?: string };
 
-function makeDeck(config: Step9Config): MemoryCard[] {
+function makeDeck(config: Step9Config, sharedSeed?: string): MemoryCard[] {
   const pairs = config.pairs.filter(pair => pair.first.trim());
   const cards: MemoryCard[] = pairs.flatMap(pair => [
     { id: `${pair.id}-a`, pairId: pair.id, face: pair.first, kind: 'text' as const },
     { id: `${pair.id}-b`, pairId: pair.id, face: pair.first, kind: 'text' as const },
   ]);
+  const random = createSeededRandom(sharedSeed || crypto.randomUUID());
   for (let index = cards.length - 1; index > 0; index -= 1) {
-    const randomIndex = Math.floor(Math.random() * (index + 1));
+    const randomIndex = Math.floor(random() * (index + 1));
     [cards[index], cards[randomIndex]] = [cards[randomIndex], cards[index]];
   }
   let rows = Math.max(1, Math.ceil((cards.length + 1) / 3));
@@ -27,8 +29,8 @@ function makeDeck(config: Step9Config): MemoryCard[] {
   return board;
 }
 
-export function Step9Memory({ config, onPrev, onNext, isLastGame, onCorrectAnswer }: Props) {
-  const deck = useMemo(() => makeDeck(config), [config]);
+export function Step9Memory({ config, onPrev, onNext, isLastGame, onCorrectAnswer, sharedSeed }: Props) {
+  const deck = useMemo(() => makeDeck(config, sharedSeed), [config, sharedSeed]);
   const pairCount = new Set(deck.filter(card => card.pairId !== 'bonus').map(card => card.pairId)).size;
   const [revealed, setRevealed] = useState<number[]>([]);
   const [matchedPairs, setMatchedPairs] = useState<string[]>([]);
