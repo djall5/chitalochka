@@ -21,6 +21,7 @@ import { playTransitionSound, isSoundMuted, toggleSound } from './utils/audio';
 import { ClassroomPanel } from './realtime/ClassroomPanel';
 import { RoomInteraction, RoomRole } from './realtime/lessonRoom';
 import { useLessonRoom } from './realtime/useLessonRoom';
+import { CloudLogin, CloudWorkspace, useCloudWorkspace } from './cloud/cloudWorkspace';
 
 const ACTIVE_LESSON_KEY = 'literacy_game_lesson_v2';
 const LESSON_LIBRARY_KEY = 'literacy_teacher_lessons_v1';
@@ -120,11 +121,12 @@ function findElementAtPath(root: Element, path: number[]) {
 
 type Screen = 'library' | 'builder' | 'play' | 'edit' | 'student' | 'student-select';
 
-export default function App() {
-  const [games, setGames] = useState<GameLibraryItem[]>(readGames);
-  const [students, setStudents] = useState<StudentRecord[]>(readStudents);
-  const [activeStudentId, setActiveStudentId] = useState<string | null>(null);
+function WorkspaceApp({ cloud }: { cloud: CloudWorkspace }) {
+  const [games, setGames] = useState<GameLibraryItem[]>(() => cloud.snapshot?.games || readGames());
+  const [students, setStudents] = useState<StudentRecord[]>(() => cloud.snapshot?.students || readStudents());
+  const [activeStudentId, setActiveStudentId] = useState<string | null>(() => cloud.snapshot?.activeStudentId ?? null);
   const [lesson, setLesson] = useState<LessonData>(() => {
+    if (cloud.snapshot?.lesson) return cloud.snapshot.lesson;
     try {
       const saved = localStorage.getItem(ACTIVE_LESSON_KEY);
       if (saved) return JSON.parse(saved) as LessonData;
@@ -194,6 +196,18 @@ export default function App() {
     setStudents(next);
     try { localStorage.setItem(STUDENTS_KEY, JSON.stringify(next)); } catch { showToast('Не удалось сохранить данные учеников'); }
   };
+
+  useEffect(() => {
+    if (!cloud.session || !cloud.ready) return;
+    const snapshot = { students, games, lesson, activeStudentId };
+    const timer = window.setTimeout(() => {
+      void cloud.save(snapshot).catch(error => {
+        console.error('Не удалось сохранить данные в облако', error);
+        showToast('Не удалось сохранить в облако. Проверьте подключение.');
+      });
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [students, games, lesson, activeStudentId, cloud.session?.user.id, cloud.ready]);
 
   useEffect(() => {
     if (collaboration.role !== 'teacher' || collaboration.status !== 'connected' || screen !== 'play') return;
@@ -416,6 +430,7 @@ export default function App() {
           {screen === 'play' && <button onClick={handleFinishLesson} className="flex items-center gap-1 rounded-xl bg-emerald-500 px-3 py-1.5 text-xs font-black text-white shadow"><Award className="h-3.5 w-3.5" />Завершить урок</button>}
           {screen === 'play' && <button onClick={() => { setShowCompletion(false); void collaboration.leave(); setScreen('library'); }} className="flex items-center gap-1 rounded-xl bg-slate-100 px-3 py-1.5 text-xs font-black text-slate-600"><Library className="h-3.5 w-3.5" />Выйти</button>}
           {(screen === 'edit' || screen === 'builder') && <button onClick={() => setScreen('library')} className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-pink-50 hover:bg-pink-100 text-pink-700 font-black text-xs border border-pink-200"><Library className="w-3.5 h-3.5" /><span className="hidden sm:inline">Мои уроки</span></button>}
+          {cloud.session && <button onClick={() => void cloud.signOut()} title={cloud.session.user.email || 'Выйти из аккаунта'} className="rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] font-bold text-slate-600">Выйти</button>}
           {screen === 'play' && <button onClick={() => handleOpenStepInEditor(currentStep)} title="Редактировать текущее задание" className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-pink-50 hover:bg-pink-100 text-pink-700 font-black text-xs border border-pink-200"><Edit3 className="w-3.5 h-3.5" /><span className="hidden sm:inline">Редактировать шаг</span></button>}
           {screen === 'edit' && <button onClick={() => { playTransitionSound(); setScreen('play'); }} className="flex items-center gap-1 px-4 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs shadow-md"><Play className="w-3.5 h-3.5 fill-white" />В игру ▶</button>}
         </div>
@@ -454,4 +469,13 @@ export default function App() {
       {screen === 'play' && <footer className="mt-4 text-center text-xs font-semibold text-slate-500/90 flex flex-wrap items-center justify-center gap-3"><span>🌟 Интерактивный урок обучения грамоте и чтению</span><span>•</span><button onClick={() => { const reset = cloneLesson(defaultLessonY); handleSaveLesson(reset); setCurrentStep(0); }} className="text-pink-600 hover:underline">Сбросить к образцу</button></footer>}
     </div>
   );
+}
+
+export default function App() {
+  const cloud = useCloudWorkspace();
+  const isStudentLink = new URLSearchParams(window.location.search).get('role') === 'student';
+  if (isStudentLink) return <WorkspaceApp cloud={{ ...cloud, session: null, save: async () => {} }} />;
+  if (!cloud.configured || !cloud.session) return <CloudLogin configured={cloud.configured} signIn={cloud.signIn} signUp={cloud.signUp} />;
+  if (!cloud.ready) return <main className="grid min-h-screen place-items-center bg-pink-50 font-sans text-sm font-bold text-pink-700">Загружаем ваши данные…</main>;
+  return <WorkspaceApp key={cloud.session.user.id} cloud={cloud} />;
 }
