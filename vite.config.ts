@@ -4,6 +4,7 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
+    base: '/chitalochka/',
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
@@ -19,4 +20,3 @@ export default defineConfig(() => {
     },
   };
 });
-
