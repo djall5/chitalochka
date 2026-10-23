@@ -1,7 +1,7 @@
 import { createClient, Session, SupabaseClient } from '@supabase/supabase-js';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { GameLibraryItem } from '../gameLibrary';
-import { StudentRecord } from '../components/StudentProfile';
+import { LessonAttempt, StudentRecord } from '../components/StudentProfile';
 import { LessonData } from '../types';
 
 export type WorkspaceSnapshot = {
@@ -22,12 +22,61 @@ export type CloudWorkspace = {
   save: (snapshot: WorkspaceSnapshot) => Promise<void>;
 };
 
+export type StudentPortalData = {
+  student: StudentRecord;
+  games: GameLibraryItem[];
+};
+
 const url = import.meta.env.VITE_SUPABASE_URL;
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 const client: SupabaseClient | null = url && key ? createClient(url, key) : null;
 
 export function getCloudClient() {
   return client;
+}
+
+async function hashPortalToken(token: string) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token));
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+export async function createStudentPortalLink(studentId: string) {
+  if (!client) throw new Error('Облачное хранилище не настроено.');
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  const token = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+  const tokenHash = await hashPortalToken(token);
+  const { error } = await client.rpc('create_student_portal_link', {
+    p_student_id: studentId,
+    p_token_hash: tokenHash,
+  });
+  if (error) throw error;
+  const url = new URL(window.location.href);
+  url.search = '';
+  url.hash = new URLSearchParams({ portal: token }).toString();
+  return url.toString();
+}
+
+export async function loadStudentPortal(token: string): Promise<StudentPortalData> {
+  if (!client) throw new Error('Облачное хранилище не настроено.');
+  const { data, error } = await client.rpc('read_student_portal', {
+    p_token_hash: await hashPortalToken(token),
+  });
+  if (error) throw error;
+  if (!data?.student || !Array.isArray(data.student.lessons)) {
+    throw new Error('Ссылка кабинета недействительна. Попросите учителя создать новую.');
+  }
+  return { student: data.student as StudentRecord, games: Array.isArray(data.games) ? data.games : [] };
+}
+
+export async function saveStudentPortalAttempt(token: string, lessonId: string, points: number): Promise<LessonAttempt> {
+  if (!client) throw new Error('Облачное хранилище не настроено.');
+  const { data, error } = await client.rpc('record_student_portal_attempt', {
+    p_token_hash: await hashPortalToken(token),
+    p_lesson_id: lessonId,
+    p_points: points,
+  });
+  if (error) throw error;
+  return data as LessonAttempt;
 }
 
 export function useCloudWorkspace() {

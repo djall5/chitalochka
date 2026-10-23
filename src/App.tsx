@@ -21,7 +21,8 @@ import { playTransitionSound, isSoundMuted, toggleSound } from './utils/audio';
 import { ClassroomPanel } from './realtime/ClassroomPanel';
 import { RoomInteraction, RoomRole } from './realtime/lessonRoom';
 import { useLessonRoom } from './realtime/useLessonRoom';
-import { CloudLogin, CloudWorkspace, useCloudWorkspace } from './cloud/cloudWorkspace';
+import { CloudLogin, CloudWorkspace, createStudentPortalLink, loadStudentPortal, saveStudentPortalAttempt, useCloudWorkspace } from './cloud/cloudWorkspace';
+import { StudentPortalDashboard } from './components/StudentPortalDashboard';
 
 const ACTIVE_LESSON_KEY = 'literacy_game_lesson_v2';
 const LESSON_LIBRARY_KEY = 'literacy_teacher_lessons_v1';
@@ -119,21 +120,23 @@ function findElementAtPath(root: Element, path: number[]) {
   return current;
 }
 
-type Screen = 'library' | 'builder' | 'play' | 'edit' | 'student' | 'student-select';
+type Screen = 'library' | 'builder' | 'play' | 'edit' | 'student' | 'student-select' | 'student-portal';
 
-function WorkspaceApp({ cloud }: { cloud: CloudWorkspace }) {
+function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspace; studentPortalToken?: string }) {
   const [games, setGames] = useState<GameLibraryItem[]>(() => cloud.snapshot?.games || readGames());
   const [students, setStudents] = useState<StudentRecord[]>(() => cloud.snapshot?.students || readStudents());
   const [activeStudentId, setActiveStudentId] = useState<string | null>(() => cloud.snapshot?.activeStudentId ?? null);
   const [lesson, setLesson] = useState<LessonData>(() => {
     if (cloud.snapshot?.lesson) return cloud.snapshot.lesson;
+    const portalLesson = studentPortalToken && cloud.snapshot?.students[0]?.lessons[0];
+    if (portalLesson) return portalLesson;
     try {
       const saved = localStorage.getItem(ACTIVE_LESSON_KEY);
       if (saved) return JSON.parse(saved) as LessonData;
     } catch { /* use the starter lesson */ }
     return cloneLesson(defaultLessonY);
   });
-  const [screen, setScreen] = useState<Screen>('student-select');
+  const [screen, setScreen] = useState<Screen>(studentPortalToken ? 'student-portal' : 'student-select');
   const [builderEditing, setBuilderEditing] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [score, setScore] = useState(0);
@@ -194,6 +197,7 @@ function WorkspaceApp({ cloud }: { cloud: CloudWorkspace }) {
 
   const persistStudents = (next: StudentRecord[]) => {
     setStudents(next);
+    if (studentPortalToken) return;
     try { localStorage.setItem(STUDENTS_KEY, JSON.stringify(next)); } catch { showToast('Не удалось сохранить данные учеников'); }
   };
 
@@ -210,11 +214,11 @@ function WorkspaceApp({ cloud }: { cloud: CloudWorkspace }) {
   }, [students, games, lesson, activeStudentId, cloud.session?.user.id, cloud.ready]);
 
   useEffect(() => {
-    if (collaboration.role !== 'teacher' || collaboration.status !== 'connected' || screen !== 'play') return;
+    if (studentPortalToken || collaboration.role !== 'teacher' || collaboration.status !== 'connected' || screen !== 'play') return;
     const state = { lesson, currentStep, score, studentName };
     collaboration.setLatestState(state);
     void collaboration.publishState(state);
-  }, [collaboration.role, collaboration.status, screen, lesson, currentStep, score, studentName]);
+  }, [studentPortalToken, collaboration.role, collaboration.status, screen, lesson, currentStep, score, studentName]);
 
   useEffect(() => {
     if (collaboration.role !== 'student' || collaboration.status !== 'connected' || screen !== 'play') return;
@@ -368,7 +372,7 @@ function WorkspaceApp({ cloud }: { cloud: CloudWorkspace }) {
 
   const goNext = () => handleGoToStep(currentStep + 1);
   const goPrevious = () => handleGoToStep(currentStep - 1);
-  const wide = screen === 'library' || screen === 'builder' || screen === 'student' || screen === 'student-select';
+  const wide = screen === 'library' || screen === 'builder' || screen === 'student' || screen === 'student-select' || screen === 'student-portal';
 
   const resetSessionScore = () => {
     setScore(0);
@@ -401,13 +405,26 @@ function WorkspaceApp({ cloud }: { cloud: CloudWorkspace }) {
     if (collaboration.role === 'student') void collaboration.publishProgress(score + points);
   };
 
-  const handleFinishLesson = () => {
+  const handleFinishLesson = async () => {
     if (collaboration.role === 'student') collaboration.publishAction('завершил урок');
     if (!completedRun.current && activeStudent) {
       completedRun.current = true;
-      const attempt: LessonAttempt = { id: crypto.randomUUID(), lessonId: lesson.id, lessonTitle: lesson.title, points: score, completedAt: new Date().toISOString() };
-      const next = students.map(student => student.id === activeStudent.id ? { ...student, attempts: [...student.attempts, attempt] } : student);
-      persistStudents(next);
+      if (studentPortalToken) {
+        try {
+          const attempt = await saveStudentPortalAttempt(studentPortalToken, lesson.id, score);
+          const next = students.map(student => student.id === activeStudent.id ? { ...student, attempts: [...student.attempts, attempt] } : student);
+          persistStudents(next);
+          showToast('Результат сохранён в кабинете');
+        } catch (error) {
+          completedRun.current = false;
+          showToast(error instanceof Error ? error.message : 'Не удалось сохранить результат');
+          return;
+        }
+      } else {
+        const attempt: LessonAttempt = { id: crypto.randomUUID(), lessonId: lesson.id, lessonTitle: lesson.title, points: score, completedAt: new Date().toISOString() };
+        const next = students.map(student => student.id === activeStudent.id ? { ...student, attempts: [...student.attempts, attempt] } : student);
+        persistStudents(next);
+      }
     }
     setShowCompletion(true);
   };
@@ -424,23 +441,24 @@ function WorkspaceApp({ cloud }: { cloud: CloudWorkspace }) {
       {toastMessage && <div className="fixed top-4 right-4 z-50 bg-slate-900/90 text-white font-bold text-xs md:text-sm px-4 py-2.5 rounded-2xl shadow-xl flex items-center gap-2 border border-white/20"><Check className="w-4 h-4 text-emerald-400" />{toastMessage}</div>}
 
       <header className={`w-full ${wide ? 'max-w-6xl' : 'max-w-2xl'} bg-white/90 backdrop-blur-md rounded-2xl px-3 py-2 md:px-5 md:py-2.5 shadow-md border-2 border-pink-200 flex flex-wrap items-center justify-between gap-2 mb-4`}>
-        <div className="flex min-w-0 items-center gap-2"><div className="w-8 h-8 shrink-0 rounded-xl bg-gradient-to-tr from-pink-500 to-rose-400 text-white flex items-center justify-center font-black text-sm shadow-xs">{screen === 'library' || screen === 'student-select' ? <BookOpen className="w-4 h-4" /> : screen === 'builder' ? <Edit3 className="w-4 h-4" /> : lesson.targetLetter || 'Й'}</div><div className="min-w-0"><div className="truncate max-w-[210px] sm:max-w-sm font-black text-xs md:text-sm text-slate-800">{screen === 'library' ? `Уроки · ${studentName}` : screen === 'student-select' ? 'Выбор ученика' : screen === 'builder' ? 'Создание нового урока' : lesson.title}</div><div className="text-[10px] text-pink-600 font-bold hidden sm:block">{screen === 'play' ? `🎮 Ученик: ${displayStudentName}` : screen === 'edit' ? '✏️ Режим конструктора' : screen === 'builder' ? 'Соберите занятие из игр' : screen === 'student-select' ? 'Выберите или создайте карточку' : 'Пространство учителя'}</div></div></div>
+        <div className="flex min-w-0 items-center gap-2"><div className="w-8 h-8 shrink-0 rounded-xl bg-gradient-to-tr from-pink-500 to-rose-400 text-white flex items-center justify-center font-black text-sm shadow-xs">{screen === 'library' || screen === 'student-select' || screen === 'student-portal' ? <BookOpen className="w-4 h-4" /> : screen === 'builder' ? <Edit3 className="w-4 h-4" /> : lesson.targetLetter || 'Й'}</div><div className="min-w-0"><div className="truncate max-w-[210px] sm:max-w-sm font-black text-xs md:text-sm text-slate-800">{screen === 'library' ? `Уроки · ${studentName}` : screen === 'student-select' ? 'Выбор ученика' : screen === 'student-portal' ? `Кабинет · ${studentName}` : screen === 'builder' ? 'Создание нового урока' : lesson.title}</div><div className="text-[10px] text-pink-600 font-bold hidden sm:block">{screen === 'play' ? `🎮 Ученик: ${displayStudentName}` : screen === 'edit' ? '✏️ Режим конструктора' : screen === 'builder' ? 'Соберите занятие из игр' : screen === 'student-select' ? 'Выберите или создайте карточку' : screen === 'student-portal' ? 'Твои занятия и успехи' : 'Пространство учителя'}</div></div></div>
         <div className="flex items-center gap-1.5">
           {screen === 'play' && <button onClick={handleToggleSound} title={muted ? 'Включить звуковые эффекты' : 'Выключить звуковые эффекты'} className="p-1.5 rounded-xl bg-pink-50 hover:bg-pink-100 text-pink-700 border border-pink-200">{muted ? <VolumeX className="w-4 h-4 text-slate-400" /> : <Volume2 className="w-4 h-4 text-pink-600" />}</button>}
           {screen === 'play' && <button onClick={handleFinishLesson} className="flex items-center gap-1 rounded-xl bg-emerald-500 px-3 py-1.5 text-xs font-black text-white shadow"><Award className="h-3.5 w-3.5" />Завершить урок</button>}
-          {screen === 'play' && <button onClick={() => { setShowCompletion(false); void collaboration.leave(); setScreen('library'); }} className="flex items-center gap-1 rounded-xl bg-slate-100 px-3 py-1.5 text-xs font-black text-slate-600"><Library className="h-3.5 w-3.5" />Выйти</button>}
+          {screen === 'play' && <button onClick={() => { setShowCompletion(false); void collaboration.leave(); setScreen(studentPortalToken ? 'student-portal' : 'library'); }} className="flex items-center gap-1 rounded-xl bg-slate-100 px-3 py-1.5 text-xs font-black text-slate-600"><Library className="h-3.5 w-3.5" />{studentPortalToken ? 'В кабинет' : 'Выйти'}</button>}
           {(screen === 'edit' || screen === 'builder') && <button onClick={() => setScreen('library')} className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-pink-50 hover:bg-pink-100 text-pink-700 font-black text-xs border border-pink-200"><Library className="w-3.5 h-3.5" /><span className="hidden sm:inline">Мои уроки</span></button>}
           {cloud.session && <button onClick={() => void cloud.signOut()} title={cloud.session.user.email || 'Выйти из аккаунта'} className="rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] font-bold text-slate-600">Выйти</button>}
-          {screen === 'play' && <button onClick={() => handleOpenStepInEditor(currentStep)} title="Редактировать текущее задание" className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-pink-50 hover:bg-pink-100 text-pink-700 font-black text-xs border border-pink-200"><Edit3 className="w-3.5 h-3.5" /><span className="hidden sm:inline">Редактировать шаг</span></button>}
+          {screen === 'play' && !studentPortalToken && <button onClick={() => handleOpenStepInEditor(currentStep)} title="Редактировать текущее задание" className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-pink-50 hover:bg-pink-100 text-pink-700 font-black text-xs border border-pink-200"><Edit3 className="w-3.5 h-3.5" /><span className="hidden sm:inline">Редактировать шаг</span></button>}
           {screen === 'edit' && <button onClick={() => { playTransitionSound(); setScreen('play'); }} className="flex items-center gap-1 px-4 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs shadow-md"><Play className="w-3.5 h-3.5 fill-white" />В игру ▶</button>}
         </div>
       </header>
 
       <main className={`w-full ${wide ? 'max-w-6xl' : 'max-w-2xl'} flex-1 flex flex-col items-center justify-center`}>
-        {screen === 'play' && <ClassroomPanel configured={collaboration.configured} roomId={collaboration.roomId} role={collaboration.role} status={collaboration.status} statusMessage={collaboration.statusMessage} members={collaboration.members} lastAction={collaboration.lastAction} onCreate={createClassroom} onJoin={collaboration.join} onLeave={collaboration.leave} />}
+        {screen === 'play' && !studentPortalToken && <ClassroomPanel configured={collaboration.configured} roomId={collaboration.roomId} role={collaboration.role} status={collaboration.status} statusMessage={collaboration.statusMessage} members={collaboration.members} lastAction={collaboration.lastAction} onCreate={createClassroom} onJoin={collaboration.join} onLeave={collaboration.leave} />}
         {screen === 'student-select' && <StudentSelection students={students} onSelect={handleSelectStudent} onCreate={handleCreateStudent} />}
+        {screen === 'student-portal' && activeStudent && <StudentPortalDashboard student={activeStudent} onStart={item => handleOpenLesson(item, 'play')} />}
         {screen === 'library' && <TeacherWorkspace lessons={lessons} games={games} onNewLesson={handleNewLesson} onOpenLesson={handleOpenLesson} onDeleteLesson={handleDeleteLesson} onCreateGame={handleCreateGame} onOpenStudent={() => setScreen('student')} studentName={studentName} onSwitchStudent={() => setScreen('student-select')} />}
-        {screen === 'student' && <StudentProfile name={studentName} attempts={studentAttempts} onNameChange={handleStudentName} onBack={() => setScreen('library')} />}
+        {screen === 'student' && activeStudent && <StudentProfile studentId={activeStudent.id} name={studentName} attempts={studentAttempts} onNameChange={handleStudentName} onBack={() => setScreen('library')} onCreatePortalLink={createStudentPortalLink} />}
         {screen === 'builder' && <LessonBuilder key={lesson.id} initialLesson={lesson} games={games} isEditing={builderEditing} onBack={() => setScreen('library')} onSave={handleSaveBuiltLesson} />}
         {screen === 'edit' && <LessonEditor lesson={lesson} onSave={handleSaveLesson} onClose={() => setScreen('play')} activeStepTab={editorStartTab} />}
         {screen === 'play' && <div ref={lessonSurfaceRef} className="w-full max-w-[650px] bg-white/95 backdrop-blur-md rounded-3xl shadow-2xl border-2 border-pink-200 p-4 md:p-7 relative text-center">
@@ -464,16 +482,45 @@ function WorkspaceApp({ cloud }: { cloud: CloudWorkspace }) {
         </div>}
       </main>
 
-      {showCompletion && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"><div className="w-full max-w-sm rounded-3xl border-4 border-pink-200 bg-white p-7 text-center shadow-2xl"><div className="text-5xl">🏆</div><h2 className="mt-3 text-2xl font-black text-pink-600">Урок завершён!</h2><p className="mt-2 text-sm font-semibold text-slate-600">{displayStudentName} заработал(а) <strong className="text-amber-600">{score} баллов</strong>. {collaboration.role === 'student' ? 'Учитель видит результат.' : 'Результат добавлен в карточку ученика.'}</p><button onClick={() => { setShowCompletion(false); setScreen(collaboration.role === 'student' ? 'play' : 'student'); }} className="mt-5 w-full rounded-xl bg-gradient-to-r from-pink-500 to-purple-600 px-4 py-3 text-sm font-black text-white">{collaboration.role === 'student' ? 'Вернуться к уроку' : 'Посмотреть прогресс'}</button><button onClick={() => { setShowCompletion(false); void collaboration.leave(); setScreen('library'); }} className="mt-2 w-full rounded-xl bg-slate-100 px-4 py-2.5 text-xs font-black text-slate-600">Выйти к урокам</button></div></div>}
+      {showCompletion && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"><div className="w-full max-w-sm rounded-3xl border-4 border-pink-200 bg-white p-7 text-center shadow-2xl"><div className="text-5xl">🏆</div><h2 className="mt-3 text-2xl font-black text-pink-600">Урок завершён!</h2><p className="mt-2 text-sm font-semibold text-slate-600">{displayStudentName} заработал(а) <strong className="text-amber-600">{score} баллов</strong>. {studentPortalToken ? 'Результат появится в кабинете и у учителя.' : collaboration.role === 'student' ? 'Учитель видит результат.' : 'Результат добавлен в карточку ученика.'}</p><button onClick={() => { setShowCompletion(false); setScreen(studentPortalToken ? 'student-portal' : collaboration.role === 'student' ? 'play' : 'student'); }} className="mt-5 w-full rounded-xl bg-gradient-to-r from-pink-500 to-purple-600 px-4 py-3 text-sm font-black text-white">{studentPortalToken ? 'В кабинет ученика' : collaboration.role === 'student' ? 'Вернуться к уроку' : 'Посмотреть прогресс'}</button><button onClick={() => { setShowCompletion(false); void collaboration.leave(); setScreen(studentPortalToken ? 'student-portal' : 'library'); }} className="mt-2 w-full rounded-xl bg-slate-100 px-4 py-2.5 text-xs font-black text-slate-600">{studentPortalToken ? 'Продолжить занятия' : 'Выйти к урокам'}</button></div></div>}
 
-      {screen === 'play' && <footer className="mt-4 text-center text-xs font-semibold text-slate-500/90 flex flex-wrap items-center justify-center gap-3"><span>🌟 Интерактивный урок обучения грамоте и чтению</span><span>•</span><button onClick={() => { const reset = cloneLesson(defaultLessonY); handleSaveLesson(reset); setCurrentStep(0); }} className="text-pink-600 hover:underline">Сбросить к образцу</button></footer>}
+      {screen === 'play' && <footer className="mt-4 text-center text-xs font-semibold text-slate-500/90 flex flex-wrap items-center justify-center gap-3"><span>🌟 Интерактивный урок обучения грамоте и чтению</span>{!studentPortalToken && <><span>•</span><button onClick={() => { const reset = cloneLesson(defaultLessonY); handleSaveLesson(reset); setCurrentStep(0); }} className="text-pink-600 hover:underline">Сбросить к образцу</button></>}</footer>}
     </div>
   );
 }
 
+function StudentPortalEntry({ token, cloud }: { token: string; cloud: CloudWorkspace }) {
+  const [data, setData] = useState<Awaited<ReturnType<typeof loadStudentPortal>> | null>(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    void loadStudentPortal(token).then(result => {
+      if (active) setData(result);
+    }).catch(reason => {
+      if (active) setError(reason instanceof Error ? reason.message : 'Не удалось открыть кабинет ученика.');
+    });
+    return () => { active = false; };
+  }, [token]);
+
+  if (error) return <main className="grid min-h-screen place-items-center bg-gradient-to-br from-pink-100 via-violet-50 to-amber-50 p-4 font-sans text-slate-800"><section className="max-w-md rounded-3xl border-2 border-pink-200 bg-white p-7 text-center shadow-xl"><div className="text-4xl">🔗</div><h1 className="mt-3 text-xl font-black">Не удалось открыть кабинет</h1><p className="mt-2 text-sm font-semibold text-slate-500">{error}</p></section></main>;
+  if (!data) return <main className="grid min-h-screen place-items-center bg-pink-50 font-sans text-sm font-bold text-pink-700">Открываем кабинет ученика…</main>;
+
+  const snapshot = {
+    students: [data.student],
+    games: data.games.length ? data.games : DEFAULT_GAME_LIBRARY,
+    lesson: data.student.lessons[0] || cloneLesson(defaultLessonY),
+    activeStudentId: data.student.id,
+  };
+  return <WorkspaceApp key={token} cloud={{ ...cloud, session: null, ready: true, snapshot, save: async () => {} }} studentPortalToken={token} />;
+}
+
 export default function App() {
   const cloud = useCloudWorkspace();
-  const isStudentLink = new URLSearchParams(window.location.search).get('role') === 'student';
+  const params = new URLSearchParams(window.location.search);
+  const portalToken = params.get('portal') || new URLSearchParams(window.location.hash.slice(1)).get('portal');
+  const isStudentLink = params.get('role') === 'student';
+  if (portalToken) return <StudentPortalEntry token={portalToken} cloud={cloud} />;
   if (isStudentLink) return <WorkspaceApp cloud={{ ...cloud, session: null, save: async () => {} }} />;
   if (!cloud.configured || !cloud.session) return <CloudLogin configured={cloud.configured} signIn={cloud.signIn} signUp={cloud.signUp} />;
   if (!cloud.ready) return <main className="grid min-h-screen place-items-center bg-pink-50 font-sans text-sm font-bold text-pink-700">Загружаем ваши данные…</main>;
