@@ -91,14 +91,26 @@ export function useCloudWorkspace() {
   useEffect(() => {
     if (!client) return;
     let active = true;
-    client.auth.getSession().then(({ data, error }) => {
+    setReady(false);
+    setLoadError('');
+    let timeoutId = 0;
+    const timeout = new Promise<never>((_, reject) => {
+      timeoutId = window.setTimeout(() => reject(new Error('Supabase не ответил при проверке входа. Проверьте подключение и повторите попытку.')), 12000);
+    });
+    Promise.race([client.auth.getSession(), timeout]).then(({ data, error }) => {
       if (!active) return;
       if (error) console.error('Could not restore the sign-in session', error);
       setSession(data.session);
       if (!data.session) setReady(true);
-    });
+    }).catch((error: unknown) => {
+      if (!active) return;
+      console.error('Could not restore the sign-in session', error);
+      setLoadError(error instanceof Error ? error.message : 'Не удалось проверить вход. Проверьте подключение и повторите попытку.');
+      setReady(false);
+    }).finally(() => window.clearTimeout(timeoutId));
     const { data: { subscription } } = client.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
+      setLoadError('');
       if (!nextSession) {
         setSnapshot(null);
         setReady(true);
@@ -107,30 +119,35 @@ export function useCloudWorkspace() {
       }
     });
     return () => { active = false; subscription.unsubscribe(); };
-  }, []);
+  }, [reloadKey]);
 
   useEffect(() => {
     if (!client || !session?.user) return;
     let active = true;
     setReady(false);
-    client.from('teacher_workspaces').select('data').eq('user_id', session.user.id).maybeSingle()
+    let timeoutId = 0;
+    const timeout = new Promise<never>((_, reject) => {
+      timeoutId = window.setTimeout(() => reject(new Error('Supabase не ответил при загрузке данных. Проверьте подключение и повторите попытку.')), 12000);
+    });
+    Promise.race([client.from('teacher_workspaces').select('data').eq('user_id', session.user.id).maybeSingle(), timeout])
       .then(({ data, error }) => {
         if (!active) return;
         if (error) {
           console.error('Could not load the cloud workspace', error);
           setSnapshot(null);
         setLoadError(error.message || 'Не удалось загрузить облачные данные. Проверьте подключение и повторите попытку.');
+        setReady(false);
         } else {
           setSnapshot((data?.data as WorkspaceSnapshot | null) || null);
         setLoadError('');
-        }
         setReady(true);
+        }
       }, (error: unknown) => {
         if (!active) return;
         console.error('Could not load the cloud workspace', error);
         setLoadError(error instanceof Error ? error.message : 'Не удалось загрузить облачные данные. Проверьте подключение и повторите попытку.');
         setReady(false);
-      });
+      }).finally(() => window.clearTimeout(timeoutId));
     return () => { active = false; };
   }, [session?.user.id, reloadKey]);
 
