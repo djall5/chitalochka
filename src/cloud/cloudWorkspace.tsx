@@ -1,5 +1,5 @@
 import { createClient, Session, SupabaseClient } from '@supabase/supabase-js';
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { GameLibraryItem } from '../gameLibrary';
 import { LessonAttempt, StudentRecord } from '../components/StudentProfile';
 import { LessonData } from '../types';
@@ -87,6 +87,7 @@ export function useCloudWorkspace() {
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
   const [loadError, setLoadError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
+  const userIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!client) return;
@@ -101,6 +102,7 @@ export function useCloudWorkspace() {
       if (!active) return;
       if (error) console.error('Could not restore the sign-in session', error);
       setSession(data.session);
+      userIdRef.current = data.session?.user.id ?? null;
       if (!data.session) setReady(true);
     }).catch((error: unknown) => {
       if (!active) return;
@@ -109,12 +111,16 @@ export function useCloudWorkspace() {
       setReady(false);
     }).finally(() => window.clearTimeout(timeoutId));
     const { data: { subscription } } = client.auth.onAuthStateChange((_event, nextSession) => {
+      const nextUserId = nextSession?.user.id ?? null;
+      const userChanged = userIdRef.current !== nextUserId;
+      userIdRef.current = nextUserId;
       setSession(nextSession);
-      setLoadError('');
       if (!nextSession) {
+        setLoadError('');
         setSnapshot(null);
         setReady(true);
-      } else {
+      } else if (userChanged) {
+        setLoadError('');
         setReady(false);
       }
     });
