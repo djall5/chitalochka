@@ -523,6 +523,7 @@ export default function App() {
   if (portalToken) return <StudentPortalEntry token={portalToken} cloud={cloud} />;
   if (isStudentLink) return <WorkspaceApp cloud={{ ...cloud, session: null, save: async () => {} }} />;
   if (!cloud.configured || !cloud.session) return <CloudLogin configured={cloud.configured} signIn={cloud.signIn} signUp={cloud.signUp} />;
+  if (!cloud.ready && cloud.loadError) return <main className="grid min-h-screen place-items-center bg-gradient-to-br from-pink-100 via-violet-50 to-amber-50 p-4 font-sans text-slate-800"><section className="max-w-md rounded-3xl border-2 border-pink-200 bg-white p-7 text-center shadow-xl"><div className="text-4xl">☁️</div><h1 className="mt-3 text-xl font-black">Не удалось загрузить данные</h1><p className="mt-2 text-sm font-semibold text-slate-500">{cloud.loadError}</p><button onClick={cloud.reload} className="mt-5 w-full rounded-xl bg-gradient-to-r from-pink-500 to-purple-600 px-4 py-3 text-sm font-black text-white">Повторить загрузку</button></section></main>;
   if (!cloud.ready) return <main className="grid min-h-screen place-items-center bg-pink-50 font-sans text-sm font-bold text-pink-700">Загружаем ваши данные…</main>;
   return <WorkspaceApp key={cloud.session.user.id} cloud={cloud} />;
 }

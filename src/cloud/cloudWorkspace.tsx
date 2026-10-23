@@ -15,11 +15,13 @@ export type CloudWorkspace = {
   configured: boolean;
   session: Session | null;
   ready: boolean;
+  loadError: string;
   snapshot: WorkspaceSnapshot | null;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   save: (snapshot: WorkspaceSnapshot) => Promise<void>;
+  reload: () => void;
 };
 
 export type StudentPortalData = {
@@ -83,6 +85,8 @@ export function useCloudWorkspace() {
   const [session, setSession] = useState<Session | null>(null);
   const [ready, setReady] = useState(!client);
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
+  const [loadError, setLoadError] = useState('');
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     if (!client) return;
@@ -115,18 +119,26 @@ export function useCloudWorkspace() {
         if (error) {
           console.error('Could not load the cloud workspace', error);
           setSnapshot(null);
+        setLoadError(error.message || 'Не удалось загрузить облачные данные. Проверьте подключение и повторите попытку.');
         } else {
           setSnapshot((data?.data as WorkspaceSnapshot | null) || null);
+        setLoadError('');
         }
         setReady(true);
+      }, (error: unknown) => {
+        if (!active) return;
+        console.error('Could not load the cloud workspace', error);
+        setLoadError(error instanceof Error ? error.message : 'Не удалось загрузить облачные данные. Проверьте подключение и повторите попытку.');
+        setReady(false);
       });
     return () => { active = false; };
-  }, [session?.user.id]);
+  }, [session?.user.id, reloadKey]);
 
   return useMemo<CloudWorkspace>(() => ({
     configured: Boolean(client),
     session,
     ready,
+    loadError,
     snapshot,
     signIn: async (email, password) => {
       if (!client) throw new Error('Облачное хранилище не настроено.');
@@ -152,7 +164,12 @@ export function useCloudWorkspace() {
       }, { onConflict: 'user_id' });
       if (error) throw error;
     },
-  }), [session, ready, snapshot]);
+    reload: () => {
+      setLoadError('');
+      setReady(false);
+      setReloadKey(current => current + 1);
+    },
+  }), [session, ready, snapshot, loadError]);
 }
 
 export function CloudLogin({ configured, signIn, signUp }: Pick<CloudWorkspace, 'configured' | 'signIn' | 'signUp'>) {
