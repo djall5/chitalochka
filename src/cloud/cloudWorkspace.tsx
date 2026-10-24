@@ -1,5 +1,5 @@
 import { createClient, Session, SupabaseClient } from '@supabase/supabase-js';
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GameLibraryItem } from '../gameLibrary';
 import { LessonAttempt, StudentLearningProgress, StudentRecord } from '../components/StudentProfile';
 import { LessonData } from '../types';
@@ -21,6 +21,7 @@ export type CloudWorkspace = {
   signUp: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   save: (snapshot: WorkspaceSnapshot) => Promise<void>;
+  refresh: () => Promise<WorkspaceSnapshot | null>;
   reload: () => void;
 };
 
@@ -158,6 +159,15 @@ export function useCloudWorkspace() {
     return () => { active = false; };
   }, [session?.user.id, reloadKey]);
 
+  const refresh = useCallback(async () => {
+    if (!client || !session?.user) return snapshot;
+    const { data, error } = await client.from('teacher_workspaces').select('data').eq('user_id', session.user.id).maybeSingle();
+    if (error) throw error;
+    const nextSnapshot = (data?.data as WorkspaceSnapshot | null) || null;
+    if (JSON.stringify(nextSnapshot) !== JSON.stringify(snapshot)) setSnapshot(nextSnapshot);
+    return nextSnapshot;
+  }, [session?.user.id, snapshot]);
+
   return useMemo<CloudWorkspace>(() => ({
     configured: Boolean(client),
     session,
@@ -188,12 +198,13 @@ export function useCloudWorkspace() {
       }, { onConflict: 'user_id' });
       if (error) throw error;
     },
+    refresh,
     reload: () => {
       setLoadError('');
       setReady(false);
       setReloadKey(current => current + 1);
     },
-  }), [session, ready, snapshot, loadError]);
+  }), [session, ready, snapshot, loadError, refresh]);
 }
 
 export function CloudLogin({ configured, signIn, signUp }: Pick<CloudWorkspace, 'configured' | 'signIn' | 'signUp'>) {

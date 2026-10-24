@@ -159,7 +159,7 @@ $$;
 
 revoke all on function public.create_student_portal_link(text, text) from public, anon;
 revoke all on function public.read_student_portal(text) from public;
-revoke all on function public.record_student_portal_attempt(text, text, integer) from public;
+revoke all on function public.record_student_portal_attempt(text, text, integer, jsonb) from public;
 grant execute on function public.create_student_portal_link(text, text) to authenticated;
 grant execute on function public.read_student_portal(text) to anon, authenticated;
-grant execute on function public.record_student_portal_attempt(text, text, integer) to anon, authenticated;
+grant execute on function public.record_student_portal_attempt(text, text, integer, jsonb) to anon, authenticated;

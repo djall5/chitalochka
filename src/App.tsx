@@ -147,6 +147,7 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
   const [roomStudentName, setRoomStudentName] = useState('');
   const lessonSurfaceRef = useRef<HTMLDivElement>(null);
   const activePointerId = useRef<number | null>(null);
+  const cloudSnapshotRef = useRef(cloud.snapshot);
 
   const collaboration = useLessonRoom({
     onState: incoming => {
@@ -204,6 +205,30 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
     if (studentPortalToken) return;
     try { localStorage.setItem(STUDENTS_KEY, JSON.stringify(next)); } catch { showToast('Не удалось сохранить данные учеников'); }
   };
+
+  useEffect(() => {
+    if (studentPortalToken || !cloud.snapshot || cloud.snapshot === cloudSnapshotRef.current) return;
+    cloudSnapshotRef.current = cloud.snapshot;
+    setStudents(cloud.snapshot.students);
+    setGames(cloud.snapshot.games);
+    setLesson(cloud.snapshot.lesson);
+    setActiveStudentId(cloud.snapshot.activeStudentId);
+  }, [studentPortalToken, cloud.snapshot]);
+
+  useEffect(() => {
+    if (studentPortalToken || !cloud.session) return;
+    const refreshWorkspace = () => {
+      if (document.visibilityState === 'visible') void cloud.refresh().catch(() => {});
+    };
+    const interval = window.setInterval(refreshWorkspace, 10000);
+    window.addEventListener('focus', refreshWorkspace);
+    document.addEventListener('visibilitychange', refreshWorkspace);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refreshWorkspace);
+      document.removeEventListener('visibilitychange', refreshWorkspace);
+    };
+  }, [studentPortalToken, cloud.session?.user.id, cloud.refresh]);
 
   useEffect(() => {
     if (!cloud.session || !cloud.ready) return;
