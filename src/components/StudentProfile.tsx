@@ -17,6 +17,8 @@ export type LearningProgressCategory = 'letters' | 'syllables' | 'words';
 export interface LearningProgressItem {
   value: string;
   status: LearningProgressStatus;
+  /** Syllables and words are teacher notes, rather than automatically collected material. */
+  manual?: boolean;
 }
 
 export interface StudentLearningProgress {
@@ -37,8 +39,8 @@ type ProgressGame = { stepKey: string; config?: unknown };
 
 const categories: { key: LearningProgressCategory; title: string; singular: string; placeholder: string }[] = [
   { key: 'letters', title: 'Буквы и звуки', singular: 'букву или звук', placeholder: 'Например, Р' },
-  { key: 'syllables', title: 'Слоги', singular: 'слог', placeholder: 'Например, РА' },
-  { key: 'words', title: 'Слова', singular: 'слово', placeholder: 'Например, ракета' },
+  { key: 'syllables', title: 'Слоги · вручную', singular: 'слог', placeholder: 'Например, РА' },
+  { key: 'words', title: 'Слова · вручную', singular: 'слово', placeholder: 'Например, ракета' },
 ];
 
 const statusDetails: Record<LearningProgressStatus, { label: string; className: string; icon: typeof CircleDot }> = {
@@ -65,7 +67,8 @@ function normalizeItems(category: LearningProgressCategory, items: unknown): Lea
     seen.add(id);
     const rawStatus = item && typeof item === 'object' && 'status' in item ? item.status : 'working';
     const status: LearningProgressStatus = rawStatus === 'mastered' || rawStatus === 'focus' ? rawStatus : 'working';
-    result.push({ value, status });
+    const manual = Boolean(item && typeof item === 'object' && 'manual' in item && item.manual);
+    result.push({ value, status, ...(manual ? { manual: true } : {}) });
     return result;
   }, []);
 }
@@ -82,62 +85,39 @@ function addLetters(set: Set<string>, source?: string) {
   for (const letter of (source || '').toUpperCase().match(/[А-ЯЁ]/g) || []) set.add(letter);
 }
 
-function addWords(set: Set<string>, source?: string) {
-  for (const word of (source || '').toLowerCase().match(/[а-яё]+(?:-[а-яё]+)*/gi) || []) {
-    if (word.length > 1) set.add(word);
-  }
-}
-
-function addSyllable(set: Set<string>, source?: string) {
-  const syllable = normalizeValue('syllables', source || '');
-  if (/^[А-ЯЁ]{2,4}$/.test(syllable)) set.add(syllable);
-}
-
-/** Finds the material that is deliberately used in the games of a completed lesson. */
+/** Finds only the letters that are deliberately practised in the games of a completed lesson. */
 export function collectLessonLearningProgress(lesson: LessonData, games: ProgressGame[] = []): StudentLearningProgress {
   const letters = new Set<string>();
-  const syllables = new Set<string>();
-  const words = new Set<string>();
   addLetters(letters, lesson.targetLetter);
   const sourceGames: ProgressGame[] = games.length ? games : Object.keys(lesson).filter(key => /^step\d+$/.test(key)).map(stepKey => ({ stepKey }));
 
   sourceGames.forEach(({ stepKey, config }) => {
     const step = (config || (lesson as unknown as Record<string, unknown>)[stepKey]) as Record<string, unknown> | undefined;
     if (!step) return;
-    if (stepKey === 'step1') (Array.isArray(step.palette) ? step.palette : []).forEach(item => addSyllable(syllables, item && typeof item === 'object' && 'syllable' in item ? String(item.syllable ?? '') : ''));
     if (stepKey === 'step2') {
-      (Array.isArray(step.syllables) ? step.syllables : []).forEach(item => addSyllable(syllables, String(item ?? '')));
       addLetters(letters, String(step.practiceLetters ?? ''));
     }
     if (stepKey === 'step3' || stepKey === 'step10') {
       const targets = Array.isArray(step.targetLetters) ? step.targetLetters : [step.targetLetter];
       targets.forEach(item => addLetters(letters, String(item ?? '')));
     }
-    if (stepKey === 'step5') {
-      addLetters(letters, String(step.targetLetter ?? ''));
-      (Array.isArray(step.words) ? step.words : []).forEach(item => addWords(words, item && typeof item === 'object' && 'fullWord' in item ? String(item.fullWord ?? '') : ''));
-    }
-    if (stepKey === 'step6') (Array.isArray(step.cards) ? step.cards : []).forEach(item => addWords(words, item && typeof item === 'object' && 'speakWord' in item ? String(item.speakWord ?? '') : ''));
+    if (stepKey === 'step5') addLetters(letters, String(step.targetLetter ?? ''));
     if (stepKey === 'step7') {
       addLetters(letters, String(step.practiceLetters ?? ''));
-      (Array.isArray(step.pages) ? step.pages : []).forEach(item => addWords(words, item && typeof item === 'object' && 'plainText' in item ? String(item.plainText ?? '') : ''));
     }
-    if (stepKey === 'step8') (Array.isArray(step.words) ? step.words : []).forEach(item => addWords(words, String(item ?? '')));
     if (stepKey === 'step9') {
       (Array.isArray(step.pairs) ? step.pairs : []).forEach(item => {
         if (!item || typeof item !== 'object') return;
         const pair = item as Record<string, unknown>;
-        if (step.mode === 'word-picture') addWords(words, String(pair.word ?? pair.first ?? ''));
-        else [pair.first, pair.second].forEach(value => {
+        if (step.mode !== 'word-picture') [pair.first, pair.second].forEach(value => {
           const text = String(value ?? '');
           if (/^[А-ЯЁ]$/i.test(text)) addLetters(letters, text);
-          else addSyllable(syllables, text);
         });
       });
     }
   });
 
-  return { letters: [...letters].map(value => ({ value, status: 'working' })), syllables: [...syllables].map(value => ({ value, status: 'working' })), words: [...words].map(value => ({ value, status: 'working' })) };
+  return { letters: [...letters].map(value => ({ value, status: 'working' })), syllables: [], words: [] };
 }
 
 /** Adds new lesson material without overwriting a status that the teacher has already chosen. */
@@ -164,7 +144,7 @@ export function addLearningProgressItem(progress: StudentLearningProgress | unde
   const next = normalizeLearningProgress(progress);
   const normalized = normalizeValue(category, value);
   if (!normalized || next[category].some(item => item.value.toLocaleLowerCase('ru-RU') === normalized.toLocaleLowerCase('ru-RU'))) return next;
-  next[category] = [...next[category], { value: normalized, status: 'working' }];
+  next[category] = [...next[category], { value: normalized, status: 'working', manual: true }];
   return next;
 }
 
@@ -197,9 +177,12 @@ export function StudentProfile({ studentId, name, attempts, lessons, games, lear
   const [portalBusy, setPortalBusy] = useState(false);
   const [portalMessage, setPortalMessage] = useState('');
   const [newItems, setNewItems] = useState<Record<LearningProgressCategory, string>>({ letters: '', syllables: '', words: '' });
+  const storedProgress = normalizeLearningProgress(learningProgress);
+  // Earlier releases collected every syllable and word automatically. Keep only teacher-entered notes.
+  const teacherNotesOnly = { ...storedProgress, syllables: storedProgress.syllables.filter(item => item.manual), words: storedProgress.words.filter(item => item.manual) };
   const completedLessonIds = new Set(attempts.map(attempt => attempt.lessonId));
   const historicalProgress = lessons.reduce((result, lesson) => completedLessonIds.has(lesson.id) ? mergeLearningProgress(result, learningProgressForLesson(lesson, games)) : result, blankProgress());
-  const progress = mergeLearningProgress(learningProgress, historicalProgress);
+  const progress = mergeLearningProgress(teacherNotesOnly, historicalProgress);
 
   const createPortalLink = async () => {
     setPortalBusy(true);
@@ -227,7 +210,7 @@ export function StudentProfile({ studentId, name, attempts, lessons, games, lear
       <div className="mt-5 rounded-2xl border border-violet-100 bg-violet-50/60 p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="flex items-center gap-2 text-sm font-black text-slate-800"><Link2 className="h-4 w-4 text-violet-600" />Кабинет ученика</h2><p className="mt-1 text-xs font-medium text-slate-500">Создайте ссылку, чтобы ученик видел свои занятия и результаты.</p></div><button disabled={portalBusy} onClick={() => void createPortalLink()} className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-xs font-black text-white disabled:opacity-50"><Copy className="h-4 w-4" />{portalBusy ? 'Создаём…' : 'Создать ссылку'}</button></div>{portalUrl && <input readOnly value={portalUrl} onFocus={event => event.currentTarget.select()} className="mt-3 w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs font-medium text-slate-600" aria-label="Ссылка кабинета ученика" />}{portalMessage && <p role="status" className="mt-2 flex items-center gap-1 text-xs font-bold text-violet-700">{portalMessage.includes('скопирована') && <Check className="h-3.5 w-3.5" />}{portalMessage}</p>}{portalUrl && <p className="mt-2 text-[10px] font-semibold text-slate-400">Создание новой ссылки отключит предыдущую.</p>}</div>
       <div className="mt-5 grid gap-3 sm:grid-cols-3"><Stat icon={<BookOpen className="h-5 w-5" />} label="Уроков пройдено" value={attempts.length} /><Stat icon={<Award className="h-5 w-5" />} label="Баллов за урок в среднем" value={average} /><Stat icon={<Trophy className="h-5 w-5" />} label="Лучший результат" value={attempts.length ? Math.max(...attempts.map(attempt => attempt.points)) : 0} /></div>
 
-      <section className="mt-7 rounded-2xl border border-sky-100 bg-sky-50/50 p-4 md:p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="flex items-center gap-2 text-base font-black text-slate-800"><BookOpen className="h-4 w-4 text-sky-600" />Материал в работе</h2><p className="mt-1 max-w-2xl text-xs font-medium text-slate-500">После завершения урока буквы, слоги и слова из заданий появляются здесь со статусом «в работе». Статус можно изменить вручную.</p></div><div className="flex flex-wrap gap-1.5 text-[10px] font-black">{(Object.entries(statusDetails) as [LearningProgressStatus, typeof statusDetails.working][]).map(([status, detail]) => <span key={status} className={`rounded-full border px-2 py-1 ${detail.className}`}>{detail.label}</span>)}</div></div>
+      <section className="mt-7 rounded-2xl border border-sky-100 bg-sky-50/50 p-4 md:p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="flex items-center gap-2 text-base font-black text-slate-800"><BookOpen className="h-4 w-4 text-sky-600" />Изученные буквы и заметки</h2><p className="mt-1 max-w-2xl text-xs font-medium text-slate-500">После завершения урока здесь автоматически появляются только изученные буквы. Слоги и слова учитель добавляет вручную, если хочет отслеживать отдельные нюансы.</p></div><div className="flex flex-wrap gap-1.5 text-[10px] font-black">{(Object.entries(statusDetails) as [LearningProgressStatus, typeof statusDetails.working][]).map(([status, detail]) => <span key={status} className={`rounded-full border px-2 py-1 ${detail.className}`}>{detail.label}</span>)}</div></div>
         <div className="mt-4 grid gap-3 lg:grid-cols-3">{categories.map(category => <ProgressGroup key={category.key} category={category} items={progress[category.key]} draftValue={newItems[category.key]} onDraftChange={value => setNewItems(current => ({ ...current, [category.key]: value }))} onAdd={() => addItem(category.key)} onStatusChange={(value, status) => onLearningProgressChange(updateLearningProgressStatus(progress, category.key, value, status))} />)}</div>
       </section>
 
