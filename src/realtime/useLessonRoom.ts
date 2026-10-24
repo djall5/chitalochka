@@ -19,7 +19,7 @@ export function useLessonRoom(callbacks: {
   const [status, setStatus] = useState<'idle' | 'connecting' | 'connected' | 'disconnected' | 'error'>('idle');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [members, setMembers] = useState<RoomMember[]>([]);
-  const [remoteCursor, setRemoteCursor] = useState<RoomCursor | null>(null);
+  const [remoteCursors, setRemoteCursors] = useState<RoomCursor[]>([]);
   const [lastAction, setLastAction] = useState<{ role: RoomRole; name: string; label: string } | null>(null);
 
   useEffect(() => {
@@ -29,9 +29,14 @@ export function useLessonRoom(callbacks: {
       onStep: step => callbacksRef.current.onStep(step),
       onMembers: connected => {
         setMembers(connected);
-        setRemoteCursor(previous => previous && !connected.some(member => member.id === previous.id) ? null : previous);
       },
-      onCursor: cursor => setRemoteCursor(cursor),
+      onCursor: cursor => {
+        if (!cursor) {
+          setRemoteCursors([]);
+          return;
+        }
+        setRemoteCursors(previous => [...previous.filter(item => item.id !== cursor.id), cursor]);
+      },
       onInteraction: interaction => callbacksRef.current.onInteraction(interaction),
       onAction: action => { setLastAction(action); callbacksRef.current.onAction(action); },
       onStatus: (next, message) => {
@@ -62,7 +67,7 @@ export function useLessonRoom(callbacks: {
     setRoomId(null);
     setRole(null);
     setMembers([]);
-    setRemoteCursor(null);
+    setRemoteCursors([]);
     setLastAction(null);
     setStatus('idle');
     setStatusMessage(null);
@@ -75,7 +80,7 @@ export function useLessonRoom(callbacks: {
     status,
     statusMessage,
     members,
-    remoteCursor,
+    remoteCursors,
     lastAction,
     create,
     join,

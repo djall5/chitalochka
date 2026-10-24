@@ -112,8 +112,6 @@ export class LessonRoom {
         const state = channel.presenceState<RoomMember>();
         const members = Object.values(state).flat().map(item => ({ id: item.id, role: item.role, name: item.name }));
         this.callbacks.onMembers?.(members);
-        const remoteId = this.member?.id;
-        if (remoteId && !members.some(item => item.id !== remoteId)) this.callbacks.onCursor?.(null);
       })
       .subscribe(async status => {
         if (this.channel !== channel) return;
