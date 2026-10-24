@@ -253,10 +253,10 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
 
   useEffect(() => {
     if (studentPortalToken || collaboration.role !== 'teacher' || collaboration.status !== 'connected' || screen !== 'play') return;
-    const state = { lesson, currentStep, score, studentName };
+    const state = { lesson, currentStep, score, studentName, showCompletion };
     collaboration.setLatestState(state);
     void collaboration.publishState(state);
-  }, [studentPortalToken, collaboration.role, collaboration.status, screen, lesson, currentStep, score, studentName]);
+  }, [studentPortalToken, collaboration.role, collaboration.status, screen, lesson, currentStep, score, studentName, showCompletion]);
 
   useEffect(() => {
     if (collaboration.role !== 'student' || collaboration.status !== 'connected' || screen !== 'play') return;
@@ -327,7 +327,7 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
       surface.removeEventListener('pointercancel', onUp);
       surface.removeEventListener('pointerleave', onLeave);
     };
-  }, [collaboration.roomId, collaboration.status]);
+  }, [collaboration.roomId, collaboration.status, screen]);
 
   useEffect(() => {
     if (!collaboration.roomId || collaboration.status !== 'connected' || screen !== 'play') return;
