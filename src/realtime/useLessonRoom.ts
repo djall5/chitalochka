@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ClassroomState, ClassroomViewState, LessonRoom, RoomCursor, RoomInteraction, RoomMember, RoomRole } from './lessonRoom';
+import type { DesertAction } from '../desert/desertModel';
 
 export function useLessonRoom(callbacks: {
   onState: (state: ClassroomState) => void;
@@ -7,6 +8,7 @@ export function useLessonRoom(callbacks: {
   onStep: (step: number) => void;
   onView: (view: ClassroomViewState) => void;
   onAction: (action: { role: RoomRole; name: string; label: string }) => void;
+  onDesertAction: (action: DesertAction) => void;
   onInteraction: (interaction: RoomInteraction) => void;
 }) {
   const roomRef = useRef<LessonRoom | null>(null);
@@ -41,6 +43,7 @@ export function useLessonRoom(callbacks: {
       },
       onInteraction: interaction => callbacksRef.current.onInteraction(interaction),
       onAction: action => { setLastAction(action); callbacksRef.current.onAction(action); },
+      onDesertAction: action => callbacksRef.current.onDesertAction(action),
       onStatus: (next, message) => {
         setStatus(next);
         setStatusMessage(message || null);
@@ -95,5 +98,6 @@ export function useLessonRoom(callbacks: {
     publishCursor: (x: number, y: number, clickAt?: number) => room.publishCursor(x, y, clickAt),
     publishInteraction: (interaction: Omit<RoomInteraction, 'role' | 'name'>) => room.publishInteraction(interaction),
     publishAction: (label: string) => room.publishAction(label),
+    publishDesertAction: (action: DesertAction) => room.publishDesertAction(action),
   };
 }

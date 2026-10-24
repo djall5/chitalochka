@@ -3,6 +3,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 're
 import { GameLibraryItem } from '../gameLibrary';
 import { LessonAttempt, StudentLearningProgress, StudentRecord } from '../components/StudentProfile';
 import { LessonData } from '../types';
+import { DesertAction, DesertState, normalizeDesert } from '../desert/desertModel';
 
 export type WorkspaceSnapshot = {
   students: StudentRecord[];
@@ -81,6 +82,27 @@ export async function saveStudentPortalAttempt(token: string, lessonId: string, 
   });
   if (error) throw error;
   return data as LessonAttempt;
+}
+
+export async function loadStudentDesert(studentId: string | null, portalToken = ''): Promise<{ desert: DesertState; earned: number }> {
+  if (!client) throw new Error('Облачное хранилище не настроено.');
+  const { data, error } = await client.rpc('read_student_desert', {
+    p_student_id: portalToken ? null : studentId,
+    p_token_hash: portalToken ? await hashPortalToken(portalToken) : null,
+  });
+  if (error) throw error;
+  return { desert: normalizeDesert(data?.desert), earned: Number(data?.earned) || 0 };
+}
+
+export async function mutateStudentDesert(studentId: string | null, portalToken: string, action: DesertAction): Promise<{ desert: DesertState; earned: number }> {
+  if (!client) throw new Error('Облачное хранилище не настроено.');
+  const { data, error } = await client.rpc('mutate_student_desert', {
+    p_action: action,
+    p_student_id: portalToken ? null : studentId,
+    p_token_hash: portalToken ? await hashPortalToken(portalToken) : null,
+  });
+  if (error) throw error;
+  return { desert: normalizeDesert(data?.desert), earned: Number(data?.earned) || 0 };
 }
 
 export function useCloudWorkspace() {

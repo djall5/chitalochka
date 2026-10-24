@@ -5,9 +5,10 @@ import { LessonData } from '../types';
 type Props = {
   student: StudentRecord;
   onStart: (lesson: LessonData) => void;
+  availablePoints: number | null;
 };
 
-export function StudentPortalDashboard({ student, onStart }: Props) {
+export function StudentPortalDashboard({ student, onStart, availablePoints }: Props) {
   const totalPoints = student.attempts.reduce((sum, attempt) => sum + attempt.points, 0);
   const completed = new Set(student.attempts.map(attempt => attempt.lessonId));
 
@@ -18,7 +19,7 @@ export function StudentPortalDashboard({ student, onStart }: Props) {
       <h1 className="mt-1 text-3xl font-black text-slate-800 md:text-4xl">Привет, {student.name}!</h1>
       <p className="mt-2 text-sm font-semibold text-slate-500">Здесь собраны твои занятия и успехи.</p>
       <div className="mt-4 flex flex-wrap justify-center gap-2">
-        <span className="inline-flex items-center gap-1.5 rounded-xl bg-amber-50 px-4 py-2 text-xs font-black text-amber-700"><Star className="h-4 w-4 fill-current" />{totalPoints} баллов</span>
+        <span className="inline-flex items-center gap-1.5 rounded-xl bg-amber-50 px-4 py-2 text-xs font-black text-amber-700"><Star className="h-4 w-4 fill-current" />{availablePoints === null ? '…' : availablePoints} баллов для пустыни</span>
         <span className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-50 px-4 py-2 text-xs font-black text-emerald-700"><Trophy className="h-4 w-4" />{student.attempts.length} занятий завершено</span>
       </div>
     </div>
@@ -32,6 +33,6 @@ export function StudentPortalDashboard({ student, onStart }: Props) {
         <button onClick={() => onStart(lesson)} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-pink-500 to-purple-600 px-4 py-3 text-xs font-black text-white shadow transition hover:brightness-105"><Play className="h-4 w-4 fill-current" />{completed.has(lesson.id) ? 'Повторить занятие' : 'Начать занятие'}</button>
       </article>;
     })}</div> : <div className="rounded-3xl border-2 border-dashed border-pink-200 bg-white/80 p-8 text-center"><div className="text-3xl">🌱</div><p className="mt-2 text-sm font-black text-slate-700">Пока нет занятий</p><p className="mt-1 text-xs font-semibold text-slate-500">Попроси учителя добавить урок в твою карточку.</p></div>}
-    <p className="mt-5 text-center text-[10px] font-semibold text-slate-400">Результаты сохраняются в карточке у учителя.</p>
+    <p className="mt-5 text-center text-[10px] font-semibold text-slate-400">За все занятия заработано {totalPoints} баллов. Доступный остаток уменьшается после покупок в пустыне.</p>
   </div>;
 }

@@ -2,6 +2,8 @@ import { AlertTriangle, ArrowLeft, Award, BookOpen, Check, CheckCircle2, CircleD
 import { ReactNode, useState } from 'react';
 import { DEFAULT_GAME_LIBRARY, GameLibraryItem, lessonGameOrder } from '../gameLibrary';
 import { LessonData } from '../types';
+import { CharacterEditor } from './CharacterEditor';
+import type { CharacterImages } from './DesertGame';
 
 export interface LessonAttempt {
   id: string;
@@ -34,6 +36,7 @@ export interface StudentRecord {
   lessons: LessonData[];
   learningProgress?: StudentLearningProgress;
   teacherNotes?: string;
+  character?: CharacterImages;
 }
 
 type ProgressGame = { stepKey: string; config?: unknown };
@@ -183,9 +186,13 @@ type Props = {
   onTeacherNotesChange: (notes: string) => void;
   onBack: () => void;
   onCreatePortalLink: (studentId: string) => Promise<string>;
+  character?: CharacterImages;
+  onCharacterChange: (character: CharacterImages) => void;
+  desertBalance: number | null;
+  onOpenDesert: () => void;
 };
 
-export function StudentProfile({ studentId, name, attempts, lessons, games, learningProgress, teacherNotes, onNameChange, onLearningProgressChange, onTeacherNotesChange, onBack, onCreatePortalLink }: Props) {
+export function StudentProfile({ studentId, name, attempts, lessons, games, learningProgress, teacherNotes, character, onCharacterChange, desertBalance, onOpenDesert, onNameChange, onLearningProgressChange, onTeacherNotesChange, onBack, onCreatePortalLink }: Props) {
   const totalPoints = attempts.reduce((sum, attempt) => sum + attempt.points, 0);
   const average = attempts.length ? Math.round(totalPoints / attempts.length) : 0;
   const [portalUrl, setPortalUrl] = useState('');
@@ -221,6 +228,8 @@ export function StudentProfile({ studentId, name, attempts, lessons, games, lear
     <section className="rounded-3xl border border-pink-200 bg-white/95 p-5 shadow-xl md:p-7">
       <div className="flex flex-wrap items-center gap-4"><div className="grid h-20 w-20 place-items-center rounded-3xl bg-gradient-to-br from-pink-100 to-violet-100 text-4xl">🧒</div><div className="min-w-[200px] flex-1"><label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Имя ученика</label><input value={name} onChange={event => onNameChange(event.target.value)} className="mt-1 w-full max-w-sm rounded-xl border border-pink-200 px-3 py-2 text-lg font-black text-slate-800 outline-none focus:border-pink-500" placeholder="Имя ученика" /></div><div className="rounded-2xl bg-amber-50 px-5 py-3 text-center"><div className="flex items-center justify-center gap-2 text-2xl font-black text-amber-600"><Star className="h-5 w-5 fill-current" />{totalPoints}</div><div className="text-[10px] font-black text-amber-700">баллов всего</div></div></div>
       <div className="mt-5 rounded-2xl border border-violet-100 bg-violet-50/60 p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="flex items-center gap-2 text-sm font-black text-slate-800"><Link2 className="h-4 w-4 text-violet-600" />Кабинет ученика</h2><p className="mt-1 text-xs font-medium text-slate-500">Создайте ссылку, чтобы ученик видел свои занятия и результаты.</p></div><button disabled={portalBusy} onClick={() => void createPortalLink()} className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-xs font-black text-white disabled:opacity-50"><Copy className="h-4 w-4" />{portalBusy ? 'Создаём…' : 'Создать ссылку'}</button></div>{portalUrl && <input readOnly value={portalUrl} onFocus={event => event.currentTarget.select()} className="mt-3 w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs font-medium text-slate-600" aria-label="Ссылка кабинета ученика" />}{portalMessage && <p role="status" className="mt-2 flex items-center gap-1 text-xs font-bold text-violet-700">{portalMessage.includes('скопирована') && <Check className="h-3.5 w-3.5" />}{portalMessage}</p>}{portalUrl && <p className="mt-2 text-[10px] font-semibold text-slate-400">Создание новой ссылки отключит предыдущую.</p>}</div>
+      <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-base font-black text-emerald-900">🌍 Пустыня {name}</h2><p className="mt-1 text-xs font-bold text-emerald-800">Доступно для покупок: ⭐ {desertBalance === null ? 'загружаем…' : desertBalance}</p></div><button onClick={onOpenDesert} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-black text-white">Открыть пустыню</button></div></div>
+      <CharacterEditor character={character} onChange={onCharacterChange} />
       <div className="mt-5 grid gap-3 sm:grid-cols-3"><Stat icon={<BookOpen className="h-5 w-5" />} label="Уроков пройдено" value={attempts.length} /><Stat icon={<Award className="h-5 w-5" />} label="Баллов за урок в среднем" value={average} /><Stat icon={<Trophy className="h-5 w-5" />} label="Лучший результат" value={attempts.length ? Math.max(...attempts.map(attempt => attempt.points)) : 0} /></div>
 
       <section className="mt-7 rounded-2xl border border-sky-100 bg-sky-50/50 p-4 md:p-5">

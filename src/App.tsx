@@ -21,8 +21,10 @@ import { playTransitionSound, isSoundMuted, toggleSound } from './utils/audio';
 import { ClassroomPanel } from './realtime/ClassroomPanel';
 import { RoomInteraction, RoomRole } from './realtime/lessonRoom';
 import { useLessonRoom } from './realtime/useLessonRoom';
-import { CloudLogin, CloudWorkspace, createStudentPortalLink, loadStudentPortal, saveStudentPortalAttempt, useCloudWorkspace } from './cloud/cloudWorkspace';
+import { CloudLogin, CloudWorkspace, createStudentPortalLink, loadStudentPortal, loadStudentDesert, mutateStudentDesert, saveStudentPortalAttempt, useCloudWorkspace } from './cloud/cloudWorkspace';
 import { StudentPortalDashboard } from './components/StudentPortalDashboard';
+import { DesertGame } from './components/DesertGame';
+import { applyDesertAction, blankDesert, DesertAction, DesertState, desertBalance } from './desert/desertModel';
 
 const ACTIVE_LESSON_KEY = 'literacy_game_lesson_v2';
 const LESSON_LIBRARY_KEY = 'literacy_teacher_lessons_v1';
@@ -118,7 +120,7 @@ function findElementAtPath(root: Element, path: number[]) {
   return current;
 }
 
-type Screen = 'library' | 'builder' | 'preview' | 'play' | 'edit' | 'student' | 'student-select' | 'student-portal';
+type Screen = 'library' | 'builder' | 'preview' | 'play' | 'edit' | 'student' | 'student-select' | 'student-portal' | 'desert';
 
 function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspace; studentPortalToken?: string }) {
   const [games, setGames] = useState<GameLibraryItem[]>(() => cloud.snapshot?.games || readGames());
@@ -139,12 +141,16 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
   const [currentStep, setCurrentStep] = useState(0);
   const [score, setScore] = useState(0);
   const [showCompletion, setShowCompletion] = useState(false);
+  const [desertSnapshot, setDesertSnapshot] = useState<{ studentId: string; desert: DesertState; earned: number } | null>(null);
+  const [desertReturnScreen, setDesertReturnScreen] = useState<Screen>('student');
+  const [desertLoading, setDesertLoading] = useState(false);
   const answeredKeys = useRef(new Set<string>());
   const completedRun = useRef(false);
   const [editorStartTab, setEditorStartTab] = useState(0);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [muted, setMuted] = useState<boolean>(() => isSoundMuted());
   const [roomStudentName, setRoomStudentName] = useState('');
+  const [roomCharacter, setRoomCharacter] = useState<StudentRecord['character']>();
   const lessonSurfaceRef = useRef<HTMLDivElement>(null);
   const activePointerId = useRef<number | null>(null);
   const cloudSnapshotRef = useRef(cloud.snapshot);
@@ -154,10 +160,12 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
       if (!incoming.lesson || typeof incoming.lesson !== 'object') return;
       setLesson(incoming.lesson as LessonData);
       setRoomStudentName(incoming.studentName || 'Ученик');
+      setRoomCharacter(incoming.character);
       setCurrentStep(incoming.currentStep);
       setScore(incoming.score);
       setShowCompletion(Boolean(incoming.showCompletion));
-      setScreen('play');
+      if (incoming.desert && incoming.studentId) setDesertSnapshot({ studentId: incoming.studentId, desert: incoming.desert, earned: incoming.desertEarned || 0 });
+      setScreen(incoming.desertOpen ? 'desert' : 'play');
     },
     onProgress: setScore,
     onStep: setCurrentStep,
@@ -166,7 +174,15 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
       setScore(incoming.score);
       setShowCompletion(incoming.showCompletion);
     },
-    onAction: () => {},
+    onAction: action => {
+      if (action.role !== 'student') return;
+      if (action.label === 'завершил урок' && collaboration.role === 'teacher') void handleFinishLesson();
+      if (action.label === 'открыть пустыню' && collaboration.role === 'teacher') void openDesert();
+      if (action.label === 'закрыть пустыню' && collaboration.role === 'teacher') closeDesert();
+    },
+    onDesertAction: action => {
+      if (collaboration.role === 'teacher') void performDesertAction(action).catch(error => showToast(error instanceof Error ? error.message : 'Не удалось сохранить оазис.'));
+    },
     onInteraction: interaction => {
       const surface = lessonSurfaceRef.current;
       if (!surface) return;
@@ -203,6 +219,15 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
   const studentAttempts = activeStudent?.attempts || [];
   const studentName = activeStudent?.name || 'Ученик';
   const displayStudentName = collaboration.role === 'student' ? roomStudentName || 'Ученик' : studentName;
+
+  useEffect(() => {
+    if (!activeStudent || (screen !== 'student' && screen !== 'student-portal')) return;
+    let cancelled = false;
+    void loadStudentDesert(activeStudent.id, studentPortalToken).then(result => {
+      if (!cancelled) setDesertSnapshot({ studentId: activeStudent.id, ...result });
+    }).catch(() => { if (!cancelled) setDesertSnapshot(null); });
+    return () => { cancelled = true; };
+  }, [activeStudent?.id, activeStudent?.attempts.length, screen, studentPortalToken]);
 
   const showToast = (message: string) => {
     setToastMessage(message);
@@ -252,11 +277,11 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
   }, [students, games, lesson, activeStudentId, cloud.session?.user.id, cloud.ready]);
 
   useEffect(() => {
-    if (studentPortalToken || collaboration.role !== 'teacher' || collaboration.status !== 'connected' || screen !== 'play') return;
-    const state = { lesson, currentStep, score, studentName, showCompletion };
+    if (studentPortalToken || collaboration.role !== 'teacher' || collaboration.status !== 'connected' || (screen !== 'play' && screen !== 'desert')) return;
+    const state = { lesson, currentStep, score, studentName, showCompletion, studentId: activeStudentId || undefined, desertOpen: screen === 'desert', desert: desertSnapshot?.desert, desertEarned: desertSnapshot?.earned, character: activeStudent?.character };
     collaboration.setLatestState(state);
     void collaboration.publishState(state);
-  }, [studentPortalToken, collaboration.role, collaboration.status, screen, lesson, currentStep, score, studentName, showCompletion]);
+  }, [studentPortalToken, collaboration.role, collaboration.status, screen, lesson, currentStep, score, studentName, showCompletion, activeStudentId, desertSnapshot, activeStudent?.character]);
 
   useEffect(() => {
     if (collaboration.role !== 'student' || collaboration.status !== 'connected' || screen !== 'play') return;
@@ -510,9 +535,55 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
         const attempt: LessonAttempt = { id: crypto.randomUUID(), lessonId: lesson.id, lessonTitle: lesson.title, points: score, completedAt: new Date().toISOString() };
         const next = students.map(student => student.id === activeStudent.id ? { ...student, attempts: [...student.attempts, attempt], learningProgress: mergeLearningProgress(student.learningProgress, learningProgress) } : student);
         persistStudents(next);
+        if (cloud.session) {
+          try { await cloud.save({ students: next, games, lesson, activeStudentId }); }
+          catch (error) {
+            completedRun.current = false;
+            showToast(error instanceof Error ? error.message : 'Не удалось сохранить результат урока.');
+            return;
+          }
+        }
       }
     }
     setShowCompletion(true);
+  };
+
+  const openDesert = async () => {
+    if (collaboration.role === 'student' && !studentPortalToken) {
+      collaboration.publishAction('открыть пустыню');
+      showToast('Открываем пустыню вместе с учителем…');
+      return;
+    }
+    if (!activeStudent || desertLoading) { if (!activeStudent) showToast('Сначала выберите карточку ученика.'); return; }
+    setDesertLoading(true);
+    try {
+      const result = await loadStudentDesert(activeStudent.id, studentPortalToken);
+      setDesertSnapshot({ studentId: activeStudent.id, ...result });
+      setDesertReturnScreen(screen === 'student' ? 'student' : studentPortalToken ? 'student-portal' : 'play');
+      setShowCompletion(false);
+      setScreen('desert');
+    } catch (error) { showToast(error instanceof Error ? error.message : 'Не удалось открыть пустыню.'); }
+    finally { setDesertLoading(false); }
+  };
+
+  const performDesertAction = async (action: DesertAction): Promise<DesertState> => {
+    if (collaboration.role === 'student' && !studentPortalToken) {
+      if (!desertSnapshot) throw new Error('Дождись, пока учитель откроет пустыню.');
+      const preview = applyDesertAction(desertSnapshot.desert, desertSnapshot.earned, action);
+      collaboration.publishDesertAction(action);
+      return preview;
+    }
+    const studentId = desertSnapshot?.studentId || activeStudent?.id;
+    if (!studentId) throw new Error('Карточка ученика не найдена.');
+    const result = await mutateStudentDesert(studentId, studentPortalToken, action);
+    setDesertSnapshot({ studentId, ...result });
+    return result.desert;
+  };
+
+  const closeDesert = () => {
+    if (collaboration.role === 'student' && !studentPortalToken) collaboration.publishAction('закрыть пустыню');
+    setScreen(collaboration.roomId ? 'play' : desertReturnScreen);
+    setShowCompletion(false);
   };
 
   const handleStudentName = (name: string) => {
@@ -520,7 +591,7 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
     persistStudents(students.map(student => student.id === activeStudent.id ? { ...student, name } : student));
   };
 
-  const createClassroom = (name: string) => collaboration.create(name, { lesson, currentStep, score, studentName, showCompletion });
+  const createClassroom = (name: string) => collaboration.create(name, { lesson, currentStep, score, studentName, showCompletion, studentId: activeStudentId || undefined, character: activeStudent?.character });
 
   return (
     <div className="min-h-screen w-full flex flex-col items-center justify-between p-3 md:p-6 bg-cover bg-center bg-no-repeat relative font-sans text-slate-800" style={{ backgroundImage: `linear-gradient(rgba(253, 232, 244, 0.75), rgba(245, 235, 255, 0.82)), url('https://images.unsplash.com/photo-1503676260728-1c00da094a0b?auto=format&fit=crop&w=1920&q=80')`, backgroundAttachment: 'fixed' }}>
@@ -543,9 +614,9 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
       <main className={`w-full ${wide ? 'max-w-6xl' : 'max-w-2xl'} flex-1 flex flex-col items-center justify-center`}>
         {screen === 'play' && !studentPortalToken && <ClassroomPanel configured={collaboration.configured} roomId={collaboration.roomId} role={collaboration.role} status={collaboration.status} statusMessage={collaboration.statusMessage} members={collaboration.members} lastAction={collaboration.lastAction} onCreate={createClassroom} onJoin={collaboration.join} onLeave={collaboration.leave} />}
         {screen === 'student-select' && <StudentSelection students={students} onSelect={handleSelectStudent} onCreate={handleCreateStudent} />}
-        {screen === 'student-portal' && activeStudent && <StudentPortalDashboard student={activeStudent} onStart={item => handleOpenLesson(item, 'play')} />}
+        {screen === 'student-portal' && activeStudent && <StudentPortalDashboard student={activeStudent} availablePoints={desertSnapshot?.studentId === activeStudent.id ? desertBalance(desertSnapshot.earned, desertSnapshot.desert) : null} onStart={item => handleOpenLesson(item, 'play')} />}
         {screen === 'library' && <TeacherWorkspace lessons={lessons} games={games} onNewLesson={handleNewLesson} onUseGameInLesson={handleUseGameInLesson} onOpenLesson={handleOpenLesson} onDeleteLesson={handleDeleteLesson} onCreateGame={handleCreateGame} onOpenStudent={() => setScreen('student')} studentName={studentName} onSwitchStudent={() => setScreen('student-select')} />}
-        {screen === 'student' && activeStudent && <StudentProfile studentId={activeStudent.id} name={studentName} attempts={studentAttempts} lessons={lessons} games={games} learningProgress={activeStudent.learningProgress} teacherNotes={activeStudent.teacherNotes || ''} onNameChange={handleStudentName} onLearningProgressChange={learningProgress => persistStudents(students.map(student => student.id === activeStudent.id ? { ...student, learningProgress } : student))} onTeacherNotesChange={teacherNotes => persistStudents(students.map(student => student.id === activeStudent.id ? { ...student, teacherNotes } : student))} onBack={() => setScreen('library')} onCreatePortalLink={createStudentPortalLink} />}
+        {screen === 'student' && activeStudent && <StudentProfile studentId={activeStudent.id} name={studentName} attempts={studentAttempts} lessons={lessons} games={games} learningProgress={activeStudent.learningProgress} teacherNotes={activeStudent.teacherNotes || ''} onNameChange={handleStudentName} onLearningProgressChange={learningProgress => persistStudents(students.map(student => student.id === activeStudent.id ? { ...student, learningProgress } : student))} onTeacherNotesChange={teacherNotes => persistStudents(students.map(student => student.id === activeStudent.id ? { ...student, teacherNotes } : student))} onBack={() => setScreen('library')} onCreatePortalLink={createStudentPortalLink} character={activeStudent.character} onCharacterChange={character => persistStudents(students.map(student => student.id === activeStudent.id ? { ...student, character } : student))} desertBalance={desertSnapshot?.studentId === activeStudent.id ? desertBalance(desertSnapshot.earned, desertSnapshot.desert) : null} onOpenDesert={() => void openDesert()} />}
         {screen === 'builder' && <LessonBuilder key={lesson.id} initialLesson={lesson} games={games} isEditing={builderEditing} onBack={() => setScreen('library')} onSave={handleSaveBuiltLesson} onPreview={handlePreviewBuiltLesson} />}
         {screen === 'edit' && <LessonEditor lesson={lesson} onSave={handleSaveLesson} onClose={() => setScreen('play')} activeStepTab={editorStartTab} />}
         {(screen === 'play' || screen === 'preview') && <div ref={lessonSurfaceRef} className="w-full max-w-[650px] bg-white/95 backdrop-blur-md rounded-3xl shadow-2xl border-2 border-pink-200 p-4 md:p-7 relative text-center">
@@ -574,7 +645,8 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
         </div>}
       </main>
 
-      {showCompletion && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"><div className="w-full max-w-sm rounded-3xl border-4 border-pink-200 bg-white p-7 text-center shadow-2xl"><div className="text-5xl">🏆</div><h2 className="mt-3 text-2xl font-black text-pink-600">Урок завершён!</h2><p className="mt-2 text-sm font-semibold text-slate-600">{displayStudentName} заработал(а) <strong className="text-amber-600">{score} баллов</strong>. {studentPortalToken ? 'Результат появится в кабинете и у учителя.' : collaboration.role === 'student' ? 'Учитель видит результат.' : 'Результат добавлен в карточку ученика.'}</p><button onClick={() => { setShowCompletion(false); setScreen(studentPortalToken ? 'student-portal' : collaboration.role === 'student' ? 'play' : 'student'); }} className="mt-5 w-full rounded-xl bg-gradient-to-r from-pink-500 to-purple-600 px-4 py-3 text-sm font-black text-white">{studentPortalToken ? 'В кабинет ученика' : collaboration.role === 'student' ? 'Вернуться к уроку' : 'Посмотреть прогресс'}</button><button onClick={() => { setShowCompletion(false); void collaboration.leave(); setScreen(studentPortalToken ? 'student-portal' : 'library'); }} className="mt-2 w-full rounded-xl bg-slate-100 px-4 py-2.5 text-xs font-black text-slate-600">{studentPortalToken ? 'Продолжить занятия' : 'Выйти к урокам'}</button></div></div>}
+      {showCompletion && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4"><div className="w-full max-w-sm rounded-3xl border-4 border-pink-200 bg-white p-7 text-center shadow-2xl"><div className="text-5xl">🏆</div><h2 className="mt-3 text-2xl font-black text-pink-600">Урок завершён!</h2><p className="mt-2 text-sm font-semibold text-slate-600">{displayStudentName} заработал(а) <strong className="text-amber-600">{score} баллов</strong>.</p><button disabled={desertLoading} onClick={() => void openDesert()} className="mt-5 w-full rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 px-4 py-3 text-sm font-black text-white disabled:opacity-50">{desertLoading ? 'Открываем…' : '🌍 Перейти в пустыню'}</button><button onClick={() => { setShowCompletion(false); void collaboration.leave(); setScreen(studentPortalToken ? 'student-portal' : 'library'); }} className="mt-2 w-full rounded-xl bg-slate-100 px-4 py-2.5 text-xs font-black text-slate-600">Завершить и выйти</button></div></div>}
+      {screen === 'desert' && desertSnapshot && <DesertGame studentName={displayStudentName} earned={desertSnapshot.earned} desert={desertSnapshot.desert} character={activeStudent?.character || roomCharacter} onAction={performDesertAction} onClose={closeDesert} />}
 
       {screen === 'play' && <footer className="mt-4 text-center text-xs font-semibold text-slate-500/90 flex flex-wrap items-center justify-center gap-3"><span>🌟 Интерактивный урок обучения грамоте и чтению</span>{!studentPortalToken && <><span>•</span><button onClick={() => { const reset = cloneLesson(defaultLessonY); handleSaveLesson(reset); setCurrentStep(0); }} className="text-pink-600 hover:underline">Сбросить к образцу</button></>}</footer>}
     </div>

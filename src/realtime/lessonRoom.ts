@@ -1,4 +1,6 @@
 import { createClient, RealtimeChannel, SupabaseClient } from '@supabase/supabase-js';
+import type { CharacterImages } from '../components/DesertGame';
+import type { DesertAction, DesertState } from '../desert/desertModel';
 
 export type RoomRole = 'teacher' | 'student';
 
@@ -8,6 +10,11 @@ export interface ClassroomState {
   score: number;
   studentName?: string;
   showCompletion?: boolean;
+  studentId?: string;
+  desertOpen?: boolean;
+  desert?: DesertState;
+  desertEarned?: number;
+  character?: CharacterImages;
 }
 
 export interface ClassroomViewState {
@@ -53,6 +60,7 @@ export interface LessonRoomCallbacks {
   onCursor?: (cursor: RoomCursor | null) => void;
   onInteraction?: (interaction: RoomInteraction) => void;
   onAction?: (action: { role: RoomRole; name: string; label: string }) => void;
+  onDesertAction?: (action: DesertAction) => void;
   onStatus?: (status: 'connecting' | 'connected' | 'disconnected' | 'error', message?: string) => void;
 }
 
@@ -116,6 +124,9 @@ export class LessonRoom {
       .on('broadcast', { event: 'cursor' }, ({ payload }) => this.callbacks.onCursor?.(payload as RoomCursor))
       .on('broadcast', { event: 'interaction' }, ({ payload }) => this.callbacks.onInteraction?.(payload as RoomInteraction))
       .on('broadcast', { event: 'action' }, ({ payload }) => this.callbacks.onAction?.(payload as { role: RoomRole; name: string; label: string }))
+      .on('broadcast', { event: 'desert-action' }, ({ payload }) => {
+        if (this.member?.role === 'teacher') this.callbacks.onDesertAction?.(payload as DesertAction);
+      })
       .on('broadcast', { event: 'state-request' }, () => {
         if (this.member?.role === 'teacher' && this.latestState) void this.publishState(this.latestState);
       })
@@ -198,6 +209,11 @@ export class LessonRoom {
   publishAction(label: string) {
     if (!this.channel || !this.member) return;
     void this.channel.send({ type: 'broadcast', event: 'action', payload: { role: this.member.role, name: this.member.name, label } });
+  }
+
+  publishDesertAction(action: DesertAction) {
+    if (this.member?.role !== 'student' || !this.channel) return;
+    void this.channel.send({ type: 'broadcast', event: 'desert-action', payload: action });
   }
 
   async leave() {
