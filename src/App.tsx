@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Award, BookOpen, Check, Edit3, Library, MousePointer2, Play, Volume2, VolumeX } from 'lucide-react';
 import { LessonData } from './types';
-import { defaultLessonY, PRESET_LESSONS } from './defaultLessons';
+import { defaultLessonY } from './defaultLessons';
 import { Step1Coloring } from './components/steps/Step1Coloring';
 import { Step2Falling } from './components/steps/Step2Falling';
 import { Step3Maze } from './components/steps/Step3Maze';
@@ -51,7 +51,7 @@ function readStudents(): StudentRecord[] {
         const normalized = parsed.map((student, index) => {
           const lessons = Array.isArray(student.lessons)
             ? student.lessons.map((item: LessonData) => cloneLesson(item))
-            : (index === 0 && legacyLibrary ? readLessons() : PRESET_LESSONS.map(cloneLesson));
+            : (index === 0 && legacyLibrary ? readLessons() : []);
           if (!Array.isArray(student.lessons)) changed = true;
           return { ...student, attempts: Array.isArray(student.attempts) ? student.attempts : [], lessons } as StudentRecord;
         });
@@ -64,7 +64,7 @@ function readStudents(): StudentRecord[] {
     const oldAttempts = readAttempts();
     const oldName = localStorage.getItem(STUDENT_NAME_KEY);
     if (oldAttempts.length || oldName || legacyLibrary) {
-      return [{ id: 'student-migrated', name: oldName || 'Мой ученик', attempts: oldAttempts, lessons: legacyLibrary ? readLessons().map(cloneLesson) : PRESET_LESSONS.map(cloneLesson) }];
+      return [{ id: 'student-migrated', name: oldName || 'Мой ученик', attempts: oldAttempts, lessons: legacyLibrary ? readLessons().map(cloneLesson) : [] }];
     }
   } catch { /* create a clean student list */ }
   return [];
@@ -79,11 +79,9 @@ function readLessons(): LessonData[] {
     }
     const oldActive = localStorage.getItem(ACTIVE_LESSON_KEY);
     const imported = oldActive ? JSON.parse(oldActive) as LessonData : null;
-    const defaults = PRESET_LESSONS.map(cloneLesson);
-    if (imported && !defaults.some(item => item.id === imported.id)) defaults.unshift(imported);
-    return defaults;
+    return imported ? [imported] : [];
   } catch {
-    return PRESET_LESSONS.map(cloneLesson);
+    return [];
   }
 }
 
@@ -330,6 +328,7 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
     draft.id = `lesson-${crypto.randomUUID()}`;
     draft.title = 'Новый урок';
     draft.subtitle = '';
+    draft.targetLetter = '';
     draft.gameOrder = preselectedGameId ? [preselectedGameId] : [];
     setLesson(draft);
     setBuilderEditing(false);
@@ -389,7 +388,7 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
   };
 
   const handleCreateStudent = (name: string) => {
-    const student: StudentRecord = { id: `student-${crypto.randomUUID()}`, name, attempts: [], lessons: PRESET_LESSONS.map(cloneLesson) };
+    const student: StudentRecord = { id: `student-${crypto.randomUUID()}`, name, attempts: [], lessons: [] };
     persistStudents([...students, student]);
     setActiveStudentId(student.id);
     try { localStorage.setItem(ACTIVE_STUDENT_KEY, student.id); } catch { /* keep selected in memory */ }
