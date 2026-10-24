@@ -17,7 +17,7 @@ export const DESERT_CATALOG = [
 
 export type DesertItemId = typeof DESERT_CATALOG[number]['id'];
 export type DesertAction =
-  | { type: 'buy'; itemId: DesertItemId }
+  | { type: 'buy'; itemId: DesertItemId; quantity?: number }
   | { type: 'water'; cells: number[] }
   | { type: 'place'; itemId: DesertItemId; x: number; y: number; id: string };
 
@@ -69,9 +69,12 @@ export function applyDesertAction(current: DesertState, earned: number, action: 
   const desert = normalizeDesert(current);
   if (action.type === 'buy') {
     const item = DESERT_CATALOG.find(entry => entry.id === action.itemId);
-    if (!item || desertBalance(earned, desert) < item.price) throw new Error('Недостаточно баллов для покупки.');
-    if (item.id === 'water') return { ...desert, spent: desert.spent + item.price, water: desert.water + item.amount };
-    return { ...desert, spent: desert.spent + item.price, inventory: { ...desert.inventory, [item.id]: (desert.inventory[item.id] || 0) + 1 } };
+    const quantity = action.quantity ?? 1;
+    if (!item || !Number.isInteger(quantity) || quantity < 1 || quantity > 20) throw new Error('Выбери от 1 до 20 предметов.');
+    const totalPrice = item.price * quantity;
+    if (desertBalance(earned, desert) < totalPrice) throw new Error('Недостаточно баллов для покупки.');
+    if (item.id === 'water') return { ...desert, spent: desert.spent + totalPrice, water: desert.water + item.amount * quantity };
+    return { ...desert, spent: desert.spent + totalPrice, inventory: { ...desert.inventory, [item.id]: (desert.inventory[item.id] || 0) + quantity } };
   }
   if (action.type === 'water') {
     const cells = [...desert.cells];

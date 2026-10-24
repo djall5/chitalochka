@@ -1,1 +1,12 @@
 @import "tailwindcss";
+
+@keyframes desert-wet-reveal {
+  0% { opacity: 0; }
+  25% { opacity: 0.08; }
+  65% { opacity: 0.62; }
+  100% { opacity: 1; }
+}
+
+.desert-wet-reveal {
+  animation: desert-wet-reveal 2.4s ease-in-out both;
+}

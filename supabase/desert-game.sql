@@ -61,6 +61,8 @@ declare
   v_water integer;
   v_item text;
   v_price integer;
+  v_quantity integer;
+  v_total_price integer;
   v_amount integer;
   v_index integer;
   v_stage integer;
@@ -102,11 +104,14 @@ begin
     v_price := case v_item when 'water' then 20 when 'flower' then 20 when 'bush' then 35 when 'tree' then 70
       when 'mushroom' then 25 when 'butterfly' then 35 when 'bee' then 35 when 'rabbit' then 60 when 'bird' then 50 else null end;
     if v_price is null then raise exception 'Неизвестный предмет.'; end if;
-    if v_earned - v_spent < v_price then raise exception 'Недостаточно баллов для покупки.'; end if;
-    v_spent := v_spent + v_price;
-    if v_item = 'water' then v_water := v_water + 4;
+    if coalesce(p_action ->> 'quantity', '1') !~ '^([1-9]|1[0-9]|20)$' then raise exception 'Выбери от 1 до 20 предметов.'; end if;
+    v_quantity := coalesce((p_action ->> 'quantity')::integer, 1);
+    v_total_price := v_price * v_quantity;
+    if v_earned - v_spent < v_total_price then raise exception 'Недостаточно баллов для покупки.'; end if;
+    v_spent := v_spent + v_total_price;
+    if v_item = 'water' then v_water := v_water + 4 * v_quantity;
     else
-      v_amount := coalesce((v_inventory ->> v_item)::integer, 0) + 1;
+      v_amount := coalesce((v_inventory ->> v_item)::integer, 0) + v_quantity;
       v_inventory := jsonb_set(v_inventory, array[v_item], to_jsonb(v_amount), true);
     end if;
   elsif p_action ->> 'type' = 'water' then

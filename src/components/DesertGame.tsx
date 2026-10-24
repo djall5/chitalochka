@@ -20,6 +20,11 @@ const sceneHeight = 675;
 const cellWidth = sceneWidth / DESERT_COLS;
 const cellHeight = sceneHeight * (1 - DESERT_GROUND_TOP) / DESERT_ROWS;
 
+function countWord(count: number, one: string, few: string, many: string) {
+  if (count % 100 >= 11 && count % 100 <= 14) return many;
+  return count % 10 === 1 ? one : count % 10 >= 2 && count % 10 <= 4 ? few : many;
+}
+
 // A stable, slightly uneven brush dab for each plot. Neighbouring dabs overlap into one painted area.
 function makeBrushPaths(width: number, height: number) {
   const cellPixelWidth = width / DESERT_COLS;
@@ -44,15 +49,27 @@ export function DesertGame({ studentName, earned, desert, character, onAction, o
   const [world, setWorld] = useState(desert);
   const [selected, setSelected] = useState<DesertItemId>('water');
   const [shopOpen, setShopOpen] = useState(false);
+  const [waterQuantity, setWaterQuantity] = useState(1);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('Купи воду, затем проведи пальцем или мышью по песку.');
   const [hero, setHero] = useState({ x: 0.5, y: 0.73, direction: 'front' as keyof Required<CharacterImages>, facesLeft: false });
   const [sceneSize, setSceneSize] = useState({ width: sceneWidth, height: sceneHeight });
+  const [reveals, setReveals] = useState<Set<string>>(() => new Set());
   const sceneRef = useRef<HTMLDivElement>(null);
   const strokeRef = useRef<{ base: DesertState; cells: Set<number>; last: { x: number; y: number } } | null>(null);
+  const previousDesertCells = useRef(desert.cells);
   const maskId = useId().replaceAll(':', '');
   const brushPaths = useMemo(() => makeBrushPaths(sceneSize.width, sceneSize.height), [sceneSize.width, sceneSize.height]);
-  useEffect(() => setWorld(desert), [desert]);
+  useEffect(() => {
+    const previous = previousDesertCells.current;
+    const newReveals: string[] = [];
+    desert.cells.forEach((level, index) => {
+      for (let stage = previous[index] + 1; stage <= level; stage += 1) newReveals.push(`${index}:${stage}`);
+    });
+    if (newReveals.length) setReveals(current => new Set([...current, ...newReveals]));
+    previousDesertCells.current = desert.cells;
+    setWorld(desert);
+  }, [desert]);
   useEffect(() => {
     const scene = sceneRef.current;
     if (!scene) return;
@@ -91,7 +108,7 @@ export function DesertGame({ studentName, earned, desert, character, onAction, o
     try {
       const saved = await onAction(action);
       setWorld(saved);
-      if (action.type === 'buy') setMessage(action.itemId === 'water' ? 'Вода в лейке! Проведи по песку.' : 'Покупка в рюкзаке. Выбери зелёное место на карте.');
+      if (action.type === 'buy') setMessage(action.itemId === 'water' ? `В лейке ${saved.water} ${countWord(saved.water, 'полив', 'полива', 'поливов')}. Проведи по песку.` : 'Покупка в рюкзаке. Выбери зелёное место на карте.');
       else if (action.type === 'water') setMessage('Земля оживает! Продолжай поливать.');
       else setMessage('Новый житель появился в твоём мире!');
     } catch (error) {
@@ -119,6 +136,7 @@ export function DesertGame({ studentName, earned, desert, character, onAction, o
     const index = desertCellAt(x, y);
     if (!stroke || index === null || stroke.cells.has(index) || stroke.base.cells[index] >= 3 || stroke.cells.size >= stroke.base.water) return;
     stroke.cells.add(index);
+    setReveals(current => new Set(current).add(`${index}:${stroke.base.cells[index] + 1}`));
     try { setWorld(applyDesertAction(stroke.base, earned, { type: 'water', cells: [...stroke.cells] })); }
     catch { /* the message appears when the stroke finishes */ }
   }
@@ -163,7 +181,7 @@ export function DesertGame({ studentName, earned, desert, character, onAction, o
 
     <div ref={sceneRef} className="relative min-h-0 flex-1 select-none overflow-hidden touch-none" onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={finishStroke} onPointerCancel={finishStroke}>
       <svg className="absolute inset-0 h-full w-full" viewBox="0 0 1200 675" preserveAspectRatio="none" aria-hidden="true">
-        <defs><filter id={`${maskId}-soft`} x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="7" /></filter>{[1, 2, 3].map(stage => <mask id={`${maskId}-${stage}`} key={stage} maskUnits="userSpaceOnUse" x="0" y="0" width="1200" height="675"><rect width="1200" height="675" fill="black" /><g filter={`url(#${maskId}-soft)`}>{world.cells.map((level, index) => level >= stage && <path key={index} d={brushPaths[index]} fill="white"><animate attributeName="opacity" from="0" to="1" dur="0.35s" fill="freeze" /></path>)}</g></mask>)}</defs>
+        <defs><filter id={`${maskId}-soft`} x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="7" /></filter>{[1, 2, 3].map(stage => <mask id={`${maskId}-${stage}`} key={stage} maskUnits="userSpaceOnUse" x="0" y="0" width="1200" height="675"><rect width="1200" height="675" fill="black" /><g filter={`url(#${maskId}-soft)`}>{world.cells.map((level, index) => level >= stage && <path key={index} d={brushPaths[index]} fill="white" className={reveals.has(`${index}:${stage}`) ? 'desert-wet-reveal' : undefined} />)}</g></mask>)}</defs>
         <image href={`${import.meta.env.BASE_URL}${assets.sand}`} width="1200" height="675" preserveAspectRatio="none" />
         <image href={`${import.meta.env.BASE_URL}${assets.soil}`} width="1200" height="675" preserveAspectRatio="none" mask={`url(#${maskId}-1)`} />
         <image href={`${import.meta.env.BASE_URL}${assets.sprouts}`} width="1200" height="675" preserveAspectRatio="none" mask={`url(#${maskId}-2)`} />
@@ -179,6 +197,23 @@ export function DesertGame({ studentName, earned, desert, character, onAction, o
 
     <footer className="z-10 flex items-center justify-between gap-2 bg-[#153b3b] px-3 py-2 sm:px-5"><div className="min-w-0 text-xs font-bold sm:text-sm">{selectedItem.icon} {selectedItem.name} {selected === 'water' ? `· в лейке ${world.water}` : `· в рюкзаке ${inventoryCount}`}</div><div className="flex gap-2"><button onClick={() => setSelected('water')} className={`rounded-xl px-3 py-2 text-xs font-black ${selected === 'water' ? 'bg-sky-500' : 'bg-white/15'}`}><Droplets size={16} className="inline" /> Поливать</button><button onClick={() => setShopOpen(true)} className="rounded-xl bg-amber-400 px-3 py-2 text-xs font-black text-amber-950"><ShoppingBag size={16} className="inline" /> Магазин</button></div></footer>
 
-    {shopOpen && <div className="absolute inset-0 z-20 flex items-end justify-center bg-slate-950/60 p-2 sm:items-center" onPointerDown={event => event.stopPropagation()}><section className="max-h-[86dvh] w-full max-w-3xl overflow-y-auto rounded-3xl bg-white p-4 text-slate-800 shadow-2xl sm:p-6" aria-label="Магазин пустыни"><div className="flex items-center justify-between"><div><h2 className="text-xl font-black">Магазин оазиса</h2><p className="text-xs font-bold text-slate-500">Доступно ⭐ {balance}</p></div><button onClick={() => setShopOpen(false)} aria-label="Закрыть магазин" className="rounded-xl bg-slate-100 p-2"><X size={20} /></button></div><p className="mt-2 text-xs font-semibold text-slate-500">Воду используй на песке. Растения и жителей можно разместить только на зелёной земле.</p><div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">{DESERT_CATALOG.map(item => <div key={item.id} className="rounded-2xl border-2 border-emerald-100 bg-emerald-50 p-3 text-center"><div className="text-4xl" aria-hidden="true">{item.icon}</div><div className="mt-1 text-sm font-black">{item.name}</div><div className="text-xs font-bold text-amber-700">⭐ {item.price}{item.id === 'water' ? ` · ${item.amount} полива` : ''}</div><button disabled={busy || balance < item.price} onClick={() => { setSelected(item.id); void commit({ type: 'buy', itemId: item.id }); }} className="mt-2 w-full rounded-xl bg-emerald-600 px-2 py-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300">Купить</button>{item.id !== 'water' && (world.inventory[item.id] || 0) > 0 && <button onClick={() => { setSelected(item.id); setShopOpen(false); setMessage('Нажми на зелёный участок, чтобы разместить покупку.'); }} className="mt-1 w-full rounded-xl bg-white px-2 py-2 text-xs font-black text-emerald-700">Разместить · {world.inventory[item.id]}</button>}</div>)}</div><div className="mt-4 flex items-center gap-2 text-xs font-semibold text-emerald-800"><Sprout size={16} /> Мир и покупки сохраняются для этого ученика.</div></section></div>}
+    {shopOpen && <div className="absolute inset-0 z-20 flex items-end justify-center bg-slate-950/60 p-2 sm:items-center" onPointerDown={event => event.stopPropagation()}>
+      <section className="max-h-[86dvh] w-full max-w-3xl overflow-y-auto rounded-3xl bg-white p-4 text-slate-800 shadow-2xl sm:p-6" aria-label="Магазин пустыни">
+        <div className="flex items-center justify-between"><div><h2 className="text-xl font-black">Магазин оазиса</h2><p className="text-xs font-bold text-slate-500">Доступно ⭐ {balance}</p></div><button onClick={() => setShopOpen(false)} aria-label="Закрыть магазин" className="rounded-xl bg-slate-100 p-2"><X size={20} /></button></div>
+        <p className="mt-2 text-xs font-semibold text-slate-500">Воду используй на песке. Растения и жителей можно разместить только на зелёной земле.</p>
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border-2 border-sky-200 bg-sky-50 p-3">
+          <div><p className="text-sm font-black text-sky-900">💧 Сколько наборов воды купить?</p><p className="text-xs font-semibold text-sky-700">1 набор = 4 полива за ⭐ 20</p></div>
+          <div className="flex items-center gap-2"><button aria-label="Уменьшить количество воды" disabled={waterQuantity <= 1} onClick={() => setWaterQuantity(value => value - 1)} className="h-9 w-9 rounded-xl bg-white text-xl font-black text-sky-800 disabled:opacity-40">−</button><span className="min-w-6 text-center text-lg font-black text-sky-900" aria-label={`${waterQuantity} ${countWord(waterQuantity, 'набор', 'набора', 'наборов')} воды`}>{waterQuantity}</span><button aria-label="Увеличить количество воды" disabled={waterQuantity >= 20 || (waterQuantity + 1) * 20 > balance} onClick={() => setWaterQuantity(value => value + 1)} className="h-9 w-9 rounded-xl bg-white text-xl font-black text-sky-800 disabled:opacity-40">+</button></div>
+          <p className="w-full text-xs font-black text-sky-900">Итого: {waterQuantity * 4} {countWord(waterQuantity * 4, 'полив', 'полива', 'поливов')} за ⭐ {waterQuantity * 20}</p>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">{DESERT_CATALOG.map(item => <div key={item.id} className="rounded-2xl border-2 border-emerald-100 bg-emerald-50 p-3 text-center">
+          <div className="text-4xl" aria-hidden="true">{item.icon}</div><div className="mt-1 text-sm font-black">{item.name}</div>
+          <div className="text-xs font-bold text-amber-700">⭐ {item.id === 'water' ? item.price * waterQuantity : item.price}{item.id === 'water' ? ` · ${item.amount * waterQuantity} ${countWord(item.amount * waterQuantity, 'полив', 'полива', 'поливов')}` : ''}</div>
+          <button disabled={busy || balance < item.price * (item.id === 'water' ? waterQuantity : 1)} onClick={() => { setSelected(item.id); void commit({ type: 'buy', itemId: item.id, quantity: item.id === 'water' ? waterQuantity : 1 }); }} className="mt-2 w-full rounded-xl bg-emerald-600 px-2 py-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300">{item.id === 'water' ? `Купить ${waterQuantity} ${countWord(waterQuantity, 'набор', 'набора', 'наборов')}` : 'Купить'}</button>
+          {item.id !== 'water' && (world.inventory[item.id] || 0) > 0 && <button onClick={() => { setSelected(item.id); setShopOpen(false); setMessage('Нажми на зелёный участок, чтобы разместить покупку.'); }} className="mt-1 w-full rounded-xl bg-white px-2 py-2 text-xs font-black text-emerald-700">Разместить · {world.inventory[item.id]}</button>}
+        </div>)}</div>
+        <div className="mt-4 flex items-center gap-2 text-xs font-semibold text-emerald-800"><Sprout size={16} /> Мир и покупки сохраняются для этого ученика.</div>
+      </section>
+    </div>}
   </div>;
 }
