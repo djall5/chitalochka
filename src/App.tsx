@@ -23,6 +23,7 @@ import { RoomInteraction, RoomRole } from './realtime/lessonRoom';
 import { useLessonRoom } from './realtime/useLessonRoom';
 import { CloudLogin, CloudWorkspace, createStudentPortalLink, loadStudentPortal, saveStudentPortalAttempt, useCloudWorkspace } from './cloud/cloudWorkspace';
 import { StudentPortalDashboard } from './components/StudentPortalDashboard';
+import { DesertGarden } from './components/DesertGarden';
 
 const ACTIVE_LESSON_KEY = 'literacy_game_lesson_v2';
 const LESSON_LIBRARY_KEY = 'literacy_teacher_lessons_v1';
@@ -141,6 +142,7 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
   const [showCompletion, setShowCompletion] = useState(false);
   const answeredKeys = useRef(new Set<string>());
   const completedRun = useRef(false);
+  const gardenRunId = useRef(crypto.randomUUID());
   const [editorStartTab, setEditorStartTab] = useState(0);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [muted, setMuted] = useState<boolean>(() => isSoundMuted());
@@ -415,6 +417,7 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
   const wide = screen === 'library' || screen === 'builder' || screen === 'student' || screen === 'student-select' || screen === 'student-portal';
 
   const resetSessionScore = () => {
+    gardenRunId.current = crypto.randomUUID();
     setScore(0);
     answeredKeys.current = new Set();
     completedRun.current = false;
@@ -523,7 +526,7 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
         </div>}
       </main>
 
-      {showCompletion && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"><div className="w-full max-w-sm rounded-3xl border-4 border-pink-200 bg-white p-7 text-center shadow-2xl"><div className="text-5xl">🏆</div><h2 className="mt-3 text-2xl font-black text-pink-600">Урок завершён!</h2><p className="mt-2 text-sm font-semibold text-slate-600">{displayStudentName} заработал(а) <strong className="text-amber-600">{score} баллов</strong>. {studentPortalToken ? 'Результат появится в кабинете и у учителя.' : collaboration.role === 'student' ? 'Учитель видит результат.' : 'Результат добавлен в карточку ученика.'}</p><button onClick={() => { setShowCompletion(false); setScreen(studentPortalToken ? 'student-portal' : collaboration.role === 'student' ? 'play' : 'student'); }} className="mt-5 w-full rounded-xl bg-gradient-to-r from-pink-500 to-purple-600 px-4 py-3 text-sm font-black text-white">{studentPortalToken ? 'В кабинет ученика' : collaboration.role === 'student' ? 'Вернуться к уроку' : 'Посмотреть прогресс'}</button><button onClick={() => { setShowCompletion(false); void collaboration.leave(); setScreen(studentPortalToken ? 'student-portal' : 'library'); }} className="mt-2 w-full rounded-xl bg-slate-100 px-4 py-2.5 text-xs font-black text-slate-600">{studentPortalToken ? 'Продолжить занятия' : 'Выйти к урокам'}</button></div></div>}
+      {showCompletion && <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 p-3 sm:p-6"><div className="flex min-h-full items-center justify-center"><DesertGarden studentId={activeStudent?.id || `room-${collaboration.roomId || 'guest'}`} runId={gardenRunId.current} points={score} onExit={() => { setShowCompletion(false); void collaboration.leave(); setScreen(studentPortalToken ? 'student-portal' : 'library'); }} /></div></div>}
 
       {screen === 'play' && <footer className="mt-4 text-center text-xs font-semibold text-slate-500/90 flex flex-wrap items-center justify-center gap-3"><span>🌟 Интерактивный урок обучения грамоте и чтению</span>{!studentPortalToken && <><span>•</span><button onClick={() => { const reset = cloneLesson(defaultLessonY); handleSaveLesson(reset); setCurrentStep(0); }} className="text-pink-600 hover:underline">Сбросить к образцу</button></>}</footer>}
     </div>
