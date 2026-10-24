@@ -180,8 +180,14 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
   });
 
   const order = lessonGameOrder(lesson);
-  const orderedGames = useMemo(() => order.map(id => games.find(game => game.id === id) || DEFAULT_GAME_LIBRARY.find(game => game.id === id)).filter(Boolean) as GameLibraryItem[], [order.join('|'), games]);
+  const orderedGames = useMemo(() => order.map(id => {
+    const sourceGameId = lesson.gameInstances?.[id]?.sourceGameId || id;
+    const source = games.find(game => game.id === sourceGameId) || DEFAULT_GAME_LIBRARY.find(game => game.id === sourceGameId);
+    return source ? { ...source, id } : undefined;
+  }).filter(Boolean) as GameLibraryItem[], [order.join('|'), games, lesson.gameInstances]);
   const currentGame = orderedGames[currentStep];
+  const currentGameConfig = currentGame ? lesson.gameInstances?.[currentGame.id]?.config[currentGame.stepKey] : undefined;
+  const activeLesson = currentGameConfig ? { ...lesson, [currentGame.stepKey]: currentGameConfig } as LessonData : lesson;
   const activeStudent = students.find(student => student.id === activeStudentId);
   const lessons = activeStudent?.lessons || [];
   const studentAttempts = activeStudent?.attempts || [];
@@ -465,16 +471,16 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
           <div className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-xs font-black text-amber-700">⭐ {score} баллов</div>
           <div className="flex justify-center items-center gap-2 mb-5">{orderedGames.map((game, idx) => { const isActive = currentStep === idx; const isCompleted = currentStep > idx; return <button key={`${game.id}-${idx}`} onClick={() => handleGoToStep(idx)} title={`${idx + 1}. ${game.title}`} className={`w-7 h-7 md:w-8 md:h-8 rounded-full font-black text-xs md:text-sm flex items-center justify-center transition-all duration-200 ${isActive ? 'bg-pink-500 text-white scale-110 shadow-md ring-3 ring-pink-200' : isCompleted ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-600 hover:bg-pink-100'}`}>{idx + 1}</button>; })}</div>
           <div className="min-h-[360px] flex flex-col items-center justify-center">
-            {currentGame?.stepKey === 'step1' && <Step1Coloring config={lesson.step1} onNext={goNext} onCorrectAnswer={(id, count) => handleCorrectAnswer(id, (count || 1) * 10)} onEditStep={() => handleOpenStepInEditor(currentStep)} />}
-            {currentGame?.stepKey === 'step2' && <Step2Falling config={lesson.step2} onPrev={goPrevious} onNext={goNext} onCorrectAnswer={handleCorrectAnswer} sharedSeed={collaboration.roomId || undefined} />}
-            {currentGame?.stepKey === 'step3' && <Step3Maze config={lesson.step3} onPrev={goPrevious} onNext={goNext} onCorrectAnswer={handleCorrectAnswer} />}
-            {currentGame?.stepKey === 'step4' && <Step4Drawing config={lesson.step4} onPrev={goPrevious} onNext={goNext} />}
-            {currentGame?.stepKey === 'step5' && <Step5WordFill config={lesson.step5} onPrev={goPrevious} onNext={goNext} onCorrectAnswer={handleCorrectAnswer} />}
-            {currentGame?.stepKey === 'step6' && <Step6ReadingCards config={lesson.step6} onPrev={goPrevious} onCorrectAnswer={handleCorrectAnswer} />}
-            {currentGame?.stepKey === 'step7' && <Step7TextReading config={lesson.step7} onPrev={goPrevious} onNext={goNext} onCorrectAnswer={handleCorrectAnswer} />}
-            {currentGame?.stepKey === 'step8' && <Step8BuildHouse config={lesson.step8} onPrev={goPrevious} onNext={goNext} isLastGame={currentStep === orderedGames.length - 1} onCorrectAnswer={handleCorrectAnswer} />}
-            {currentGame?.stepKey === 'step9' && <Step9Memory config={lesson.step9} onPrev={goPrevious} onNext={goNext} isLastGame={currentStep === orderedGames.length - 1} onCorrectAnswer={handleCorrectAnswer} sharedSeed={collaboration.roomId || undefined} />}
-            {currentGame?.stepKey === 'step10' && <Step10FillJar config={lesson.step10} onPrev={goPrevious} onNext={goNext} isLastGame={currentStep === orderedGames.length - 1} onCorrectAnswer={handleCorrectAnswer} sharedSeed={collaboration.roomId || undefined} />}
+            {currentGame?.stepKey === 'step1' && <Step1Coloring config={activeLesson.step1} onNext={goNext} onCorrectAnswer={(id, count) => handleCorrectAnswer(id, (count || 1) * 10)} onEditStep={() => handleOpenStepInEditor(currentStep)} />}
+            {currentGame?.stepKey === 'step2' && <Step2Falling config={activeLesson.step2} onPrev={goPrevious} onNext={goNext} onCorrectAnswer={handleCorrectAnswer} sharedSeed={collaboration.roomId || undefined} />}
+            {currentGame?.stepKey === 'step3' && <Step3Maze config={activeLesson.step3} onPrev={goPrevious} onNext={goNext} onCorrectAnswer={handleCorrectAnswer} />}
+            {currentGame?.stepKey === 'step4' && <Step4Drawing config={activeLesson.step4} onPrev={goPrevious} onNext={goNext} />}
+            {currentGame?.stepKey === 'step5' && <Step5WordFill config={activeLesson.step5} onPrev={goPrevious} onNext={goNext} onCorrectAnswer={handleCorrectAnswer} />}
+            {currentGame?.stepKey === 'step6' && <Step6ReadingCards config={activeLesson.step6} onPrev={goPrevious} onCorrectAnswer={handleCorrectAnswer} />}
+            {currentGame?.stepKey === 'step7' && <Step7TextReading config={activeLesson.step7} onPrev={goPrevious} onNext={goNext} onCorrectAnswer={handleCorrectAnswer} />}
+            {currentGame?.stepKey === 'step8' && <Step8BuildHouse config={activeLesson.step8} onPrev={goPrevious} onNext={goNext} isLastGame={currentStep === orderedGames.length - 1} onCorrectAnswer={handleCorrectAnswer} />}
+            {currentGame?.stepKey === 'step9' && <Step9Memory config={activeLesson.step9} onPrev={goPrevious} onNext={goNext} isLastGame={currentStep === orderedGames.length - 1} onCorrectAnswer={handleCorrectAnswer} sharedSeed={collaboration.roomId || undefined} />}
+            {currentGame?.stepKey === 'step10' && <Step10FillJar config={activeLesson.step10} onPrev={goPrevious} onNext={goNext} isLastGame={currentStep === orderedGames.length - 1} onCorrectAnswer={handleCorrectAnswer} sharedSeed={collaboration.roomId || undefined} />}
           </div>
           {currentGame && currentStep === orderedGames.length - 1 && <div className="mt-4 flex justify-center"><button onClick={handleFinishLesson} className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-6 py-3 text-sm font-black text-white shadow-md transition hover:brightness-105 active:scale-[.98]"><Award className="h-4 w-4" />Завершить урок</button></div>}
           {currentGame && <div className="mt-4 text-[10px] font-bold text-slate-400">{currentStep + 1} из {orderedGames.length} · {currentGame.title}</div>}

@@ -32,7 +32,8 @@ export function Step8BuildHouse({ config, onPrev, onNext, isLastGame, onCorrectA
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const currentIndex = placedIndexes.length;
   const currentWord = words[currentIndex];
-  const rows = Math.max(1, Math.ceil(words.length / 3));
+  const columns = Math.min(3, Math.max(1, words.length));
+  const rows = Math.max(1, Math.ceil(words.length / columns));
   const roofRatio = `${Math.min(98, (340 / Math.max(1, Math.min(340, window.innerWidth - 56))) * 100)}%`;
 
   const stopListening = () => {
@@ -104,7 +105,7 @@ export function Step8BuildHouse({ config, onPrev, onNext, isLastGame, onCorrectA
   };
 
   const brickForSlot = (slot: number) => {
-    const buildOrder = Array.from({ length: words.length }, (_, index) => (rows - 1 - Math.floor(index / 3)) * 3 + index % 3);
+    const buildOrder = Array.from({ length: words.length }, (_, index) => (rows - 1 - Math.floor(index / columns)) * columns + index % columns);
     const position = buildOrder.indexOf(slot);
     return position >= 0 ? words[placedIndexes[position]] : undefined;
   };
@@ -117,8 +118,8 @@ export function Step8BuildHouse({ config, onPrev, onNext, isLastGame, onCorrectA
       <div className="mx-auto flex w-full flex-col items-center">
         <div className="w-full max-w-[340px]" style={{ width: roofRatio }}><div className="aspect-[2.7/1] w-full bg-rose-400 drop-shadow-sm" style={{ clipPath: 'polygon(50% 0, 100% 100%, 0 100%)' }} /></div>
         <div className="-mt-px w-full max-w-[340px] border-4 border-amber-800 bg-amber-200 p-1.5 shadow-inner" style={{ width: roofRatio }}>
-          <div className="grid grid-cols-3 gap-1" style={{ gridTemplateRows: `repeat(${rows}, minmax(42px, 1fr))` }}>
-            {Array.from({ length: rows * 3 }, (_, slot) => {
+          <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${rows}, minmax(42px, 1fr))` }}>
+            {Array.from({ length: words.length }, (_, slot) => {
               const word = brickForSlot(slot);
               return <div key={slot} className={`flex min-h-11 min-w-0 items-center justify-center rounded-md border-2 px-1 text-[10px] font-black sm:text-xs ${word ? 'border-orange-800 bg-gradient-to-b from-orange-400 to-orange-600 text-white shadow' : 'border-dashed border-amber-500/50 bg-amber-100/60'}`}>{word || ''}</div>;
             })}

@@ -20,6 +20,7 @@ export interface Step2Config {
   syllables: string[];
   targetCatchCount: number;
   speed: 'slow' | 'medium' | 'fast';
+  practiceLetters?: string;
 }
 
 export interface Step3Config {
@@ -27,6 +28,7 @@ export interface Step3Config {
   instruction: string;
   mascot: string;
   targetLetter: string;
+  targetLetters?: string[];
   gridRows: number;
   gridCols: number;
   cells: string[][]; // gridRows x gridCols
@@ -62,6 +64,7 @@ export interface ReadingCardItem {
   icon: string;
   displayWord: string; // e.g. "РУ-ЧЕЙ"
   speakWord: string;   // e.g. "ручей"
+  showSyllables?: boolean;
 }
 
 export interface Step6Config {
@@ -74,6 +77,7 @@ export interface Step7Config {
   title: string;
   instruction: string;
   pages: ReadingTextPage[];
+  practiceLetters?: string;
 }
 
 export interface Step8Config {
@@ -86,6 +90,9 @@ export interface MemoryPair {
   id: string;
   first: string;
   second: string;
+  word?: string;
+  emoji?: string;
+  imageDataUrl?: string;
 }
 
 export interface Step9Config {
@@ -100,6 +107,7 @@ export interface Step10Config {
   instruction: string;
   targetLetter: string;
   targetCount: number;
+  targetLetters?: string[];
 }
 
 export interface ReadingTextPage {
@@ -107,6 +115,12 @@ export interface ReadingTextPage {
   imageDataUrl: string;
   plainText: string;
   syllabifiedText: string;
+}
+
+/** A deliberately repeated game keeps its own configuration inside the lesson. */
+export interface LessonGameInstance {
+  sourceGameId: string;
+  config: Record<string, unknown>;
 }
 
 export interface LessonData {
@@ -118,6 +132,8 @@ export interface LessonData {
   targetLetter?: string;
   /** Ordered game-library ids included in this lesson. Missing means the original six-step lesson. */
   gameOrder?: string[];
+  /** Per-instance settings used when the same game is deliberately added more than once. */
+  gameInstances?: Record<string, LessonGameInstance>;
   step1: Step1Config;
   step2: Step2Config;
   step3: Step3Config;

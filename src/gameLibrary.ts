@@ -38,7 +38,7 @@ export const cloneLesson = (lesson: LessonData): LessonData => {
   if (!copy.step10) copy.step10 = { title: '🫙 Заполни банку', instruction: 'Найди нужную букву среди остальных и перетащи её в банку.', targetLetter: 'А', targetCount: 16 };
   if (!Number.isFinite(copy.step10.targetCount)) copy.step10.targetCount = 16;
   if (!Array.isArray(copy.step9.pairs)) copy.step9.pairs = [];
-  copy.step9.pairs = copy.step9.pairs.map((pair: MemoryPair, index: number) => ({ id: pair.id || `memory-pair-${index + 1}`, first: pair.first || '', second: pair.second || '' }));
+  copy.step9.pairs = copy.step9.pairs.map((pair: MemoryPair, index: number) => ({ ...pair, id: pair.id || `memory-pair-${index + 1}`, first: pair.first || '', second: pair.second || '' }));
   const oldTextConfig = copy.step7 as Step7Config & Partial<ReadingTextPage>;
   if (!Array.isArray(oldTextConfig.pages)) {
     copy.step7.pages = [{ id: 'reading-page-legacy', imageDataUrl: oldTextConfig.imageDataUrl || '', plainText: oldTextConfig.plainText || '', syllabifiedText: oldTextConfig.syllabifiedText || '' }];

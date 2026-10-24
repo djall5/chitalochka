@@ -22,6 +22,11 @@ export const Step3Maze: React.FC<Props> = ({ config, onNext, onPrev, onCorrectAn
 
   const startRow = config.start?.row ?? 0;
   const startCol = config.start?.col ?? 0;
+  const pathLetters = (config.targetLetters?.length ? config.targetLetters : [config.targetLetter])
+    .map(letter => letter.trim().toUpperCase())
+    .filter(Boolean);
+  const expectedLetters = pathLetters.length > 0 ? pathLetters : ['А'];
+  const letterLabel = expectedLetters.join(' — ');
 
   const handleCellClick = (r: number, c: number, letter: string) => {
     // If clicking cell already in path: backtrack to that point
@@ -75,15 +80,16 @@ export const Step3Maze: React.FC<Props> = ({ config, onNext, onPrev, onCorrectAn
       return;
     }
 
-    // Check if path only contains targetLetter
     const nonTargetLetters = selectedPath.filter(
-      p => p.letter.toUpperCase() !== config.targetLetter.toUpperCase()
+      (p, index) => p.letter.toUpperCase() !== expectedLetters[index % expectedLetters.length]
     );
 
     if (nonTargetLetters.length > 0) {
       playChime('wrong');
       setMessage({
-        text: `❌ В дорожке есть другие буквы! Дорожка должна состоять только из буквы «${config.targetLetter}».`,
+        text: expectedLetters.length > 1
+          ? `❌ Буквы на дорожке должны чередоваться: ${letterLabel}.`
+          : `❌ В дорожке есть другие буквы! Дорожка должна состоять только из буквы «${letterLabel}».`,
         type: 'error',
       });
       return;
@@ -108,7 +114,9 @@ export const Step3Maze: React.FC<Props> = ({ config, onNext, onPrev, onCorrectAn
     playChime('celebrate');
     onCorrectAnswer?.('maze-complete', selectedPath.length);
     setMessage({
-      text: `🎉 Ура! Замечательно! Дорожка из буквы «${config.targetLetter}» построена верно!`,
+      text: expectedLetters.length > 1
+        ? `🎉 Ура! Дорожка с чередованием ${letterLabel} построена верно!`
+        : `🎉 Ура! Замечательно! Дорожка из буквы «${letterLabel}» построена верно!`,
       type: 'success',
     });
   };

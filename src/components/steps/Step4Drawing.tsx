@@ -15,6 +15,7 @@ export const Step4Drawing: React.FC<Props> = ({ config, onNext, onPrev }) => {
   const [isEraser, setIsEraser] = useState(false);
   const [lineWidth, setLineWidth] = useState(12);
   const [message, setMessage] = useState<string | null>(null);
+  const [canvasBg, setCanvasBg] = useState(config.canvasBg || '#334155');
 
   const isDrawingRef = useRef(false);
 
@@ -26,9 +27,9 @@ export const Step4Drawing: React.FC<Props> = ({ config, onNext, onPrev }) => {
     if (!ctx) return;
 
     // Fill with canvasBg
-    ctx.fillStyle = config.canvasBg || '#334155';
+    ctx.fillStyle = canvasBg;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-  }, [config.canvasBg]);
+  }, [canvasBg]);
 
   const getCanvasCoords = (e: React.MouseEvent | React.TouchEvent) => {
     const canvas = canvasRef.current;
@@ -67,7 +68,7 @@ export const Step4Drawing: React.FC<Props> = ({ config, onNext, onPrev }) => {
     ctx.lineWidth = lineWidth;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.strokeStyle = isEraser ? config.canvasBg || '#334155' : currentColor;
+    ctx.strokeStyle = isEraser ? canvasBg : currentColor;
     ctx.lineTo(coords.x, coords.y);
     ctx.stroke();
     ctx.beginPath();
@@ -87,7 +88,7 @@ export const Step4Drawing: React.FC<Props> = ({ config, onNext, onPrev }) => {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    ctx.fillStyle = config.canvasBg || '#334155';
+    ctx.fillStyle = canvasBg;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     setMessage(null);
   };
@@ -136,6 +137,7 @@ export const Step4Drawing: React.FC<Props> = ({ config, onNext, onPrev }) => {
           <Eraser className="w-4 h-4" />
         </button>
       </div>
+      <div className="mb-3 flex flex-wrap items-center justify-center gap-2 text-[10px] font-black text-slate-500"><span>Фон поля:</span>{['#ffffff', '#e0f2fe', '#fef3c7', '#dcfce7', '#334155'].map(color => <button key={color} onClick={() => setCanvasBg(color)} aria-label={`Фон ${color}`} style={{ backgroundColor: color }} className={`h-6 w-6 rounded-full border-2 ${canvasBg === color ? 'border-pink-500 ring-2 ring-pink-200' : 'border-slate-300'}`} />)}</div>
 
       {/* Canvas */}
       <div className="relative rounded-2xl overflow-hidden shadow-lg border-4 border-white mb-3">
@@ -153,11 +155,6 @@ export const Step4Drawing: React.FC<Props> = ({ config, onNext, onPrev }) => {
           className="cursor-crosshair touch-none select-none block"
           style={{ width: '280px', height: '260px' }}
         />
-        {config.promptWord && (
-          <div className="absolute top-2 right-2 bg-black/40 backdrop-blur-xs text-white/90 text-[10px] font-bold px-2 py-0.5 rounded-full pointer-events-none">
-            💡 {config.promptWord}
-          </div>
-        )}
       </div>
 
       {/* Controls */}

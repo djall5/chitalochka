@@ -16,10 +16,20 @@ export function autoGenerateSyllableGrid(
 export function autoGenerateMazeGrid(
   rows: number,
   cols: number,
-  targetLetter: string
+  targetLetter: string | string[]
 ): string[][] {
+  const targetLetters = (Array.isArray(targetLetter) ? targetLetter : [targetLetter])
+    .map(letter => letter.trim().toUpperCase())
+    .filter(Boolean);
+  const pathLetters = targetLetters.length > 0 ? targetLetters : ['А'];
   const distractors = ['А', 'О', 'У', 'Ы', 'Э', 'Я', 'Ё', 'Ю', 'И', 'Е', 'Б', 'В', 'Г', 'Д', 'Ж', 'З', 'К', 'Л', 'М', 'Н', 'П', 'Р', 'С', 'Т', 'Ф', 'Х', 'Ц', 'Ч', 'Ш', 'Щ'];
-  const filteredDistractors = distractors.filter(l => l !== targetLetter.toUpperCase());
+  const filteredDistractors = distractors.filter(l => !pathLetters.includes(l));
+  let pathIndex = 0;
+  const nextPathLetter = () => {
+    const letter = pathLetters[pathIndex % pathLetters.length];
+    pathIndex += 1;
+    return letter;
+  };
 
   // Fill board with random distractors
   const grid: string[][] = [];
@@ -34,7 +44,7 @@ export function autoGenerateMazeGrid(
   // Generate winding path from (0,0) to bottom row
   let cr = 0;
   let cc = 0;
-  grid[cr][cc] = targetLetter.toUpperCase();
+  grid[cr][cc] = nextPathLetter();
 
   const visited = new Set<string>();
   visited.add(`0,0`);
@@ -58,7 +68,7 @@ export function autoGenerateMazeGrid(
     if (candidates.length === 0) {
       // Force down
       cr++;
-      grid[cr][cc] = targetLetter.toUpperCase();
+      grid[cr][cc] = nextPathLetter();
       visited.add(`${cr},${cc}`);
       continue;
     }
@@ -66,14 +76,14 @@ export function autoGenerateMazeGrid(
     const next = candidates[Math.floor(Math.random() * candidates.length)];
     cr = next[0];
     cc = next[1];
-    grid[cr][cc] = targetLetter.toUpperCase();
+    grid[cr][cc] = nextPathLetter();
     visited.add(`${cr},${cc}`);
   }
 
   // Reach near bottom right for finish
   while (cc < cols - 2) {
     cc++;
-    grid[cr][cc] = targetLetter.toUpperCase();
+    grid[cr][cc] = nextPathLetter();
     visited.add(`${cr},${cc}`);
   }
 

@@ -8,13 +8,13 @@ type DragState = { id: string; pointerId: number; startX: number; startY: number
 type Props = { config: Step10Config; onPrev: () => void; onNext: () => void; isLastGame: boolean; onCorrectAnswer?: (answerId: string, points?: number) => void; sharedSeed?: string };
 const RUSSIAN_ALPHABET = [...'АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ'];
 
-function generateLetterScatter(target: string, count: number, seed: string): LetterTile[] {
+function generateLetterScatter(targets: string[], count: number, seed: string): LetterTile[] {
   const random = createSeededRandom(seed);
-  const targetUpper = [...target.toLocaleUpperCase('ru-RU')][0] || 'А';
+  const targetUpper = targets.length ? targets : ['А'];
   const distractorCount = Math.max(12, Math.ceil(count * 0.75));
-  const letters = Array.from({ length: count }, (_, index) => index % 2 === 0 ? targetUpper : targetUpper.toLocaleLowerCase('ru-RU'));
+  const letters = Array.from({ length: count }, (_, index) => { const target = targetUpper[index % targetUpper.length]; return index % 2 === 0 ? target : target.toLocaleLowerCase('ru-RU'); });
   for (let index = 0; index < distractorCount; index += 1) {
-    const candidates = RUSSIAN_ALPHABET.filter(letter => letter !== targetUpper);
+    const candidates = RUSSIAN_ALPHABET.filter(letter => !targetUpper.includes(letter));
     const distractor = candidates[Math.floor(random() * candidates.length)];
     letters.push(index % 2 === 0 ? distractor : distractor.toLocaleLowerCase('ru-RU'));
   }
@@ -36,7 +36,8 @@ function generateLetterScatter(target: string, count: number, seed: string): Let
 }
 
 export function Step10FillJar({ config, onPrev, onNext, isLastGame, onCorrectAnswer, sharedSeed }: Props) {
-  const targetLetter = [...(config.targetLetter || 'А').toLocaleUpperCase('ru-RU')][0] || 'А';
+  const targetLetters = (config.targetLetters?.length ? config.targetLetters : [config.targetLetter || 'А']).map(letter => [...letter.toLocaleUpperCase('ru-RU')][0]).filter(Boolean);
+  const targetLetter = targetLetters[0] || 'А';
   const targetCount = Math.max(2, Math.min(30, Math.floor(config.targetCount || 16)));
   const [shuffleSeed, setShuffleSeed] = useState(0);
   const [placedIds, setPlacedIds] = useState<string[]>([]);
@@ -48,7 +49,7 @@ export function Step10FillJar({ config, onPrev, onNext, isLastGame, onCorrectAns
   const jarRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const suppressClickRef = useRef<string | null>(null);
-  const tiles = useMemo(() => generateLetterScatter(targetLetter, targetCount, `${sharedSeed || crypto.randomUUID()}:${shuffleSeed}:${targetLetter}:${targetCount}`), [targetLetter, targetCount, shuffleSeed, sharedSeed]);
+  const tiles = useMemo(() => generateLetterScatter(targetLetters, targetCount, `${sharedSeed || crypto.randomUUID()}:${shuffleSeed}:${targetLetters.join('')}:${targetCount}`), [targetLetters.join(''), targetCount, shuffleSeed, sharedSeed]);
   const placedLetters = placedIds.map(id => tiles.find(tile => tile.id === id)?.letter || '');
   const completed = placedIds.length === targetCount;
   const remainingTiles = tiles.map((tile, index) => ({ tile, index })).filter(({ tile }) => !placedIds.includes(tile.id));
@@ -56,16 +57,16 @@ export function Step10FillJar({ config, onPrev, onNext, isLastGame, onCorrectAns
     if (!tileId || completed || placedIds.includes(tileId)) return;
     const tile = tiles.find(item => item.id === tileId);
     if (!tile) return;
-    if (tile.letter.toLocaleUpperCase('ru-RU') !== targetLetter) {
+    if (!targetLetters.includes(tile.letter.toLocaleUpperCase('ru-RU'))) {
       setSelectedId(null);
-      setMessage(`Это другая буква. Ищи «${targetLetter}» или «${targetLetter.toLocaleLowerCase('ru-RU')}».`);
+      setMessage(`Это другая буква. Ищи: ${targetLetters.join(', ')}.`);
       return;
     }
     const answerNumber = placedIds.length + 1;
     setPlacedIds(previous => [...previous, tile.id]);
     setSelectedId(null);
     setMessage('Верно! Буква в банке.');
-    onCorrectAnswer?.(`jar-${targetLetter}-${answerNumber}`);
+    onCorrectAnswer?.(`jar-${targetLetters.join('')}-${answerNumber}`);
   };
 
   const startDrag = (event: ReactPointerEvent<HTMLButtonElement>, tile: LetterTile) => {
@@ -117,14 +118,14 @@ export function Step10FillJar({ config, onPrev, onNext, isLastGame, onCorrectAns
   const renderTiles = () => <>
     {remainingTiles.map(({ tile }) => {
       const position = movedPositions[tile.id] || tile;
-      return <button key={tile.id} type="button" onPointerDown={event => startDrag(event, tile)} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} onClick={() => { if (suppressClickRef.current === tile.id) { suppressClickRef.current = null; return; } setSelectedId(tile.id === selectedId ? null : tile.id); setMessage(`Найди «${targetLetter}» или «${targetLetter.toLocaleLowerCase('ru-RU')}» и перетащи в банку.`); }} aria-label={`Буква ${tile.letter}`} style={{ left: `${position.x}%`, top: `${position.y}%`, transform: `rotate(${tile.rotation}deg)` }} className={`absolute grid h-10 w-10 touch-none select-none place-items-center rounded-xl border-[3px] bg-white text-base font-black shadow-md transition hover:-translate-y-0.5 active:scale-95 sm:h-11 sm:w-11 ${draggingId === tile.id ? 'z-30 cursor-grabbing shadow-xl' : 'z-10 cursor-grab'} ${selectedId === tile.id ? 'border-violet-500 text-violet-700 ring-2 ring-violet-200' : 'border-pink-400 text-pink-600 hover:border-pink-600'}`}>{tile.letter}</button>;
+      return <button key={tile.id} type="button" onPointerDown={event => startDrag(event, tile)} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} onClick={() => { if (suppressClickRef.current === tile.id) { suppressClickRef.current = null; return; } setSelectedId(tile.id === selectedId ? null : tile.id); setMessage(`Найди: ${targetLetters.join(', ')} и перетащи в банку.`); }} aria-label={`Буква ${tile.letter}`} style={{ left: `${position.x}%`, top: `${position.y}%`, transform: `rotate(${tile.rotation}deg)` }} className={`absolute grid h-10 w-10 touch-none select-none place-items-center rounded-xl border-[3px] bg-white text-base font-black shadow-md transition hover:-translate-y-0.5 active:scale-95 sm:h-11 sm:w-11 ${draggingId === tile.id ? 'z-30 cursor-grabbing shadow-xl' : 'z-10 cursor-grab'} ${selectedId === tile.id ? 'border-violet-500 text-violet-700 ring-2 ring-violet-200' : 'border-pink-400 text-pink-600 hover:border-pink-600'}`}>{tile.letter}</button>;
     })}
   </>;
 
   return <div className="mx-auto flex w-full max-w-2xl flex-col items-center text-center">
     <h2 className="text-xl font-black text-pink-600 md:text-2xl">{config.title}</h2>
     <p className="mb-3 mt-1 max-w-xl text-sm font-semibold text-slate-600">{config.instruction}</p>
-    <div className="mb-3 rounded-full bg-amber-50 px-3 py-1.5 text-[11px] font-black text-amber-800">Найди букву «{targetLetter}» и «{targetLetter.toLocaleLowerCase('ru-RU')}»</div>
+    <div className="mb-3 rounded-full bg-amber-50 px-3 py-1.5 text-[11px] font-black text-amber-800">Найди буквы: {targetLetters.join(', ')}</div>
     <p className="mb-2 text-xs font-black text-slate-600">Перетащи нужные буквы в банку. На телефоне нажми на букву, затем на банку.</p>
     <div ref={stageRef} className="relative min-h-[470px] w-full overflow-hidden rounded-3xl border-2 border-dashed border-slate-300 bg-slate-50/80 sm:min-h-[510px]">
       {renderTiles()}
