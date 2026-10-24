@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Check, RotateCcw, Sparkles } from 'lucide-react';
 import { Step9Config } from '../../types';
 import { createSeededRandom } from '../../utils/seededRandom';
-import { phonemeColor } from '../../utils/lessonContent';
+import { emojiForWord, phonemeColor } from '../../utils/lessonContent';
 
 type MemoryCard = { id: string; pairId: string; face: string; emoji?: string; imageDataUrl?: string; kind: 'text' | 'bonus' | 'empty' };
 type Props = { config: Step9Config; onPrev: () => void; onNext: () => void; isLastGame: boolean; onCorrectAnswer?: (answerId: string, points?: number) => void; sharedSeed?: string };
@@ -82,7 +82,7 @@ export function Step9Memory({ config, onPrev, onNext, isLastGame, onCorrectAnswe
         const isOpen = isCenterStar || revealed.includes(index) || matchedPairs.includes(card.pairId);
         const isMatched = isCenterStar || matchedPairs.includes(card.pairId);
         return <button key={card.id} role="gridcell" onClick={() => flipCard(index)} disabled={resolving || isMatched || isEmpty} aria-label={isEmpty ? 'Пустая ячейка' : isCenterStar ? 'Звёздочка, всегда открытая центральная карточка' : isOpen ? `Открытая карточка: ${card.face}` : 'Закрытая карточка'} className={`relative flex aspect-square min-w-0 flex-col items-center justify-center rounded-2xl border-2 p-1 text-lg font-black shadow-sm transition sm:text-2xl ${isEmpty ? 'pointer-events-none border-transparent bg-transparent shadow-none' : isMatched ? 'border-emerald-400 bg-emerald-50 text-emerald-700' : isOpen ? 'border-pink-300 bg-white text-slate-800' : 'border-violet-300 bg-gradient-to-br from-violet-500 to-pink-500 text-white hover:-translate-y-0.5 hover:brightness-105'}`}>
-          {!isEmpty && (isOpen ? card.kind === 'bonus' ? <span className="text-3xl">{card.face}</span> : config.mode === 'word-picture' ? <><span className="text-3xl">{card.imageDataUrl ? <img src={card.imageDataUrl} alt="" className="h-10 w-10 rounded-lg object-cover" /> : card.emoji || '🌟'}</span><span className="break-words text-[10px] leading-tight text-slate-700 sm:text-xs">{card.face}</span></> : <span className={`break-words ${phonemeColor(card.face)}`}>{card.face}</span> : <span className="text-2xl sm:text-3xl">?</span>)}
+          {!isEmpty && (isOpen ? card.kind === 'bonus' ? <span className="text-3xl">{card.face}</span> : config.mode === 'word-picture' ? <><span className="text-3xl">{card.imageDataUrl ? <img src={card.imageDataUrl} alt="" className="h-10 w-10 rounded-lg object-cover" /> : card.emoji || emojiForWord(card.face)}</span><span className="break-words text-[10px] leading-tight text-slate-700 sm:text-xs">{card.face}</span></> : <span className={`break-words ${phonemeColor(card.face)}`}>{card.face}</span> : <span className="text-2xl sm:text-3xl">?</span>)}
           {isMatched && !isCenterStar && <Check className="absolute h-3.5 w-3.5 translate-x-7 -translate-y-7 text-emerald-600 sm:translate-x-10 sm:-translate-y-10" />}
         </button>;
       })}
