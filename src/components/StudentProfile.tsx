@@ -1,5 +1,6 @@
 import { AlertTriangle, ArrowLeft, Award, BookOpen, Check, CheckCircle2, CircleDot, Copy, Link2, Plus, Star, Trophy } from 'lucide-react';
 import { ReactNode, useState } from 'react';
+import { DEFAULT_GAME_LIBRARY, GameLibraryItem, lessonGameOrder } from '../gameLibrary';
 import { LessonData } from '../types';
 
 export interface LessonAttempt {
@@ -167,10 +168,21 @@ export function addLearningProgressItem(progress: StudentLearningProgress | unde
   return next;
 }
 
+function learningProgressForLesson(lesson: LessonData, games: GameLibraryItem[]) {
+  const lessonGames: ProgressGame[] = lessonGameOrder(lesson).flatMap(id => {
+    const sourceId = lesson.gameInstances?.[id]?.sourceGameId || id;
+    const game = games.find(item => item.id === sourceId) || DEFAULT_GAME_LIBRARY.find(item => item.id === sourceId);
+    return game ? [{ stepKey: game.stepKey, config: lesson.gameInstances?.[id]?.config[game.stepKey] }] : [];
+  });
+  return collectLessonLearningProgress(lesson, lessonGames);
+}
+
 type Props = {
   studentId: string;
   name: string;
   attempts: LessonAttempt[];
+  lessons: LessonData[];
+  games: GameLibraryItem[];
   learningProgress?: StudentLearningProgress;
   onNameChange: (name: string) => void;
   onLearningProgressChange: (progress: StudentLearningProgress) => void;
@@ -178,14 +190,16 @@ type Props = {
   onCreatePortalLink: (studentId: string) => Promise<string>;
 };
 
-export function StudentProfile({ studentId, name, attempts, learningProgress, onNameChange, onLearningProgressChange, onBack, onCreatePortalLink }: Props) {
+export function StudentProfile({ studentId, name, attempts, lessons, games, learningProgress, onNameChange, onLearningProgressChange, onBack, onCreatePortalLink }: Props) {
   const totalPoints = attempts.reduce((sum, attempt) => sum + attempt.points, 0);
   const average = attempts.length ? Math.round(totalPoints / attempts.length) : 0;
   const [portalUrl, setPortalUrl] = useState('');
   const [portalBusy, setPortalBusy] = useState(false);
   const [portalMessage, setPortalMessage] = useState('');
   const [newItems, setNewItems] = useState<Record<LearningProgressCategory, string>>({ letters: '', syllables: '', words: '' });
-  const progress = normalizeLearningProgress(learningProgress);
+  const completedLessonIds = new Set(attempts.map(attempt => attempt.lessonId));
+  const historicalProgress = lessons.reduce((result, lesson) => completedLessonIds.has(lesson.id) ? mergeLearningProgress(result, learningProgressForLesson(lesson, games)) : result, blankProgress());
+  const progress = mergeLearningProgress(learningProgress, historicalProgress);
 
   const createPortalLink = async () => {
     setPortalBusy(true);
