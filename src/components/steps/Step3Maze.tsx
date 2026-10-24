@@ -177,12 +177,8 @@ export const Step3Maze: React.FC<Props> = ({ config, onNext, onPrev, onCorrectAn
                 p => p.row === rIdx && p.col === cIdx
               );
               const isSelected = pathIndex > -1;
-              const targetLetterIndex = expectedLetters.indexOf(letter.toUpperCase());
-              const targetCellStyle = expectedLetters.length > 1 && targetLetterIndex > -1
-                ? targetLetterIndex === 0
-                  ? 'bg-sky-50 border-sky-300 text-sky-700 hover:bg-sky-100'
-                  : 'bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100'
-                : 'bg-white border-slate-300 text-slate-700 hover:border-pink-400 hover:bg-pink-50';
+                // The route is intentionally not shown: only cells chosen by the child are highlighted.
+                const targetCellStyle = 'bg-white border-slate-300 text-slate-700 hover:border-pink-400 hover:bg-pink-50';
 
               return (
                 <button

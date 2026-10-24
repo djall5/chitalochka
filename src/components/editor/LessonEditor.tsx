@@ -108,8 +108,9 @@ export const LessonEditor: React.FC<Props> = ({
   const handleUpdatePalette = (idx: number, patch: Partial<PaletteItem>) => {
     setData(prev => {
       const newPalette = [...prev.step1.palette];
-      const previousSyllable = newPalette[idx].syllable;
       newPalette[idx] = { ...newPalette[idx], ...patch };
+      const syllables = newPalette.map(item => item.syllable.trim()).filter(Boolean);
+      const totalCells = (prev.step1.gridRows || 4) * (prev.step1.gridCols || 4);
       return {
         ...prev,
         step1: {
@@ -117,7 +118,7 @@ export const LessonEditor: React.FC<Props> = ({
           palette: newPalette,
           cells: patch.syllable === undefined
             ? prev.step1.cells
-            : prev.step1.cells.map(cell => cell === previousSyllable ? newPalette[idx].syllable : cell),
+            : syllables.length ? autoGenerateSyllableGrid(totalCells, syllables) : [],
         },
       };
     });
@@ -127,13 +128,11 @@ export const LessonEditor: React.FC<Props> = ({
     const newId = `p_${Date.now()}`;
     const defaultColors = ['#ec4899', '#8b5cf6', '#06b6d4', '#f97316', '#84cc16'];
     const color = defaultColors[data.step1.palette.length % defaultColors.length];
-    setData(prev => ({
-      ...prev,
-      step1: {
-        ...prev.step1,
-        palette: [...prev.step1.palette, { id: newId, syllable: 'СЛ', color }],
-      },
-    }));
+    setData(prev => {
+      const palette = [...prev.step1.palette, { id: newId, syllable: 'СЛ', color }];
+      const totalCells = (prev.step1.gridRows || 4) * (prev.step1.gridCols || 4);
+      return { ...prev, step1: { ...prev.step1, palette, cells: autoGenerateSyllableGrid(totalCells, palette.map(item => item.syllable)) } };
+    });
   };
 
   const handleRemovePaletteItem = (idx: number) => {
@@ -141,13 +140,11 @@ export const LessonEditor: React.FC<Props> = ({
       alert('В палитре должно оставаться минимум 2 слога.');
       return;
     }
-    setData(prev => ({
-      ...prev,
-      step1: {
-        ...prev.step1,
-        palette: prev.step1.palette.filter((_, i) => i !== idx),
-      },
-    }));
+    setData(prev => {
+      const palette = prev.step1.palette.filter((_, i) => i !== idx);
+      const totalCells = (prev.step1.gridRows || 4) * (prev.step1.gridCols || 4);
+      return { ...prev, step1: { ...prev.step1, palette, cells: autoGenerateSyllableGrid(totalCells, palette.map(item => item.syllable)) } };
+    });
   };
 
   const handleAutoFillStep1 = () => {
@@ -549,7 +546,7 @@ export const LessonEditor: React.FC<Props> = ({
                   Добавить слог
                 </button>
               </div>
-              <p className="mb-3 text-[11px] font-semibold text-slate-500">Измените слог в образце — все карточки с этим слогом сразу обновятся.</p>
+              <p className="mb-3 text-[11px] font-semibold text-slate-500">Заполните образцы — карточки сетки создадутся автоматически только из этих слогов.</p>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {data.step1.palette.map((item, idx) => (

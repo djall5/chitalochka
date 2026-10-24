@@ -5,7 +5,7 @@ import { cloneLesson, GameLibraryItem, GameStepKey, lessonGameOrder } from '../g
 import { applyLetterToSelectedGames, isRussianLetter } from '../letterLesson';
 import { syllabifyRussian } from '../utils/syllabifyRussian';
 import { emojiForWord, generateSyllables, makePreschoolText, mascotForLetters } from '../utils/lessonContent';
-import { autoGenerateMazeGrid } from '../utils/generators';
+import { autoGenerateMazeGrid, autoGenerateSyllableGrid } from '../utils/generators';
 
 type Props = {
   lessons: LessonData[];
@@ -207,10 +207,12 @@ function GameContentEditor({ game, lesson, onChange, onSave, onCancel }: GameCon
   });
   const updateStep1PaletteSyllable = (index: number, value: string) => {
     const syllable = value.toLocaleUpperCase('ru-RU');
-    const previousSyllable = lesson.step1.palette[index]?.syllable || '';
+    const palette = lesson.step1.palette.map((item, itemIndex) => itemIndex === index ? { ...item, syllable } : item);
+    const syllables = palette.map(item => item.syllable.trim()).filter(Boolean);
+    const totalCells = (lesson.step1.gridRows || 4) * (lesson.step1.gridCols || 4);
     updateConfig({
-      palette: lesson.step1.palette.map((item, itemIndex) => itemIndex === index ? { ...item, syllable } : item),
-      cells: lesson.step1.cells.map(cell => cell === previousSyllable ? syllable : cell),
+      palette,
+      cells: syllables.length ? autoGenerateSyllableGrid(totalCells, syllables) : [],
     });
   };
   const updateWord = (index: number, patch: Record<string, string>) => {
@@ -284,7 +286,7 @@ function GameContentEditor({ game, lesson, onChange, onSave, onCancel }: GameCon
         <label className="block text-[11px] font-black text-slate-600">Заголовок игры<input className={inputClass} value={lesson[stepKey].title} onChange={event => updateConfig({ title: event.target.value })} /></label>
         <label className="block text-[11px] font-black text-slate-600">Инструкция для ученика<textarea className={inputClass} rows={2} value={lesson[stepKey].instruction} onChange={event => updateConfig({ instruction: event.target.value })} /></label>
 
-        {stepKey === 'step1' && <div className="space-y-3 rounded-2xl bg-pink-50/60 p-4"><h3 className="text-xs font-black text-pink-700">Слоги и образцы</h3><p className="text-[10px] font-semibold text-slate-500">При изменении слога в образце все такие же карточки обновятся автоматически.</p><label className="block text-[11px] font-bold text-slate-600">Слоги на карточках<textarea className={inputClass} rows={2} value={lesson.step1.cells.join(', ')} onChange={event => updateConfig({ cells: event.target.value.split(/[,;\s]+/).map(item => item.trim().toUpperCase()).filter(Boolean) })} /></label><div className="grid gap-2 sm:grid-cols-2">{lesson.step1.palette.map((item, index) => <label key={item.id} className="text-[10px] font-bold text-slate-500">Образец {index + 1}<input className={inputClass} value={item.syllable} onChange={event => updateStep1PaletteSyllable(index, event.target.value)} /></label>)}</div></div>}
+        {stepKey === 'step1' && <div className="space-y-3 rounded-2xl bg-pink-50/60 p-4"><h3 className="text-xs font-black text-pink-700">Слоги и образцы</h3><p className="text-[10px] font-semibold text-slate-500">Заполните образцы — карточки появятся сами и будут состоять только из этих слогов.</p><label className="block text-[11px] font-bold text-slate-600">Карточки · создаются автоматически<textarea readOnly className={`${inputClass} cursor-default bg-slate-50 text-slate-500`} rows={2} value={lesson.step1.cells.join(', ')} /></label><div className="grid gap-2 sm:grid-cols-2">{lesson.step1.palette.map((item, index) => <label key={item.id} className="text-[10px] font-bold text-slate-500">Образец {index + 1}<input className={inputClass} value={item.syllable} onChange={event => updateStep1PaletteSyllable(index, event.target.value)} /></label>)}</div></div>}
 
         {stepKey === 'step2' && <div className="grid gap-3 rounded-2xl bg-pink-50/60 p-4 sm:grid-cols-2"><label className="text-[11px] font-bold text-slate-600">Буквы для автоматических слогов<input className={inputClass} value={lesson.step2.practiceLetters || ''} onChange={event => updateConfig({ practiceLetters: event.target.value.toLocaleUpperCase('ru-RU') })} placeholder="Например, М, А, С" /></label><div className="flex items-end"><button className={lightButton} onClick={() => { const syllables = generateSyllables(lesson.step2.practiceLetters || ''); updateConfig({ syllables, targetCatchCount: Math.max(1, syllables.length) }); }}>✨ Сгенерировать слоги</button></div><label className="text-[11px] font-bold text-slate-600 sm:col-span-2">Слоги для ловли · можно исправить вручную<input className={inputClass} value={lesson.step2.syllables.join(', ')} onChange={event => updateConfig({ syllables: event.target.value.split(/[,;\s]+/).map(item => item.trim().toUpperCase()).filter(Boolean) })} /></label><label className="text-[11px] font-bold text-slate-600">Количество слогов<input type="number" min={1} max={30} className={inputClass} value={lesson.step2.targetCatchCount} onChange={event => updateConfig({ targetCatchCount: Number(event.target.value) })} /></label><label className="text-[11px] font-bold text-slate-600">Скорость<select className={inputClass} value={lesson.step2.speed} onChange={event => updateConfig({ speed: event.target.value })}><option value="slow">Медленно</option><option value="medium">Спокойно</option><option value="fast">Быстрее</option></select></label></div>}
 
