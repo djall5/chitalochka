@@ -74,7 +74,8 @@ $$;
 create or replace function public.record_student_portal_attempt(
   p_token_hash text,
   p_lesson_id text,
-  p_points integer
+  p_points integer,
+  p_learning_progress jsonb default null
 )
 returns jsonb
 language plpgsql
@@ -92,6 +93,9 @@ begin
   end if;
   if p_points is null or p_points < 0 or p_points > 5000 then
     raise exception 'Некорректный результат.';
+  end if;
+  if p_learning_progress is not null and jsonb_typeof(p_learning_progress) <> 'object' then
+    raise exception 'Некорректные данные прогресса.';
   end if;
 
   select teacher_id, student_id into linked_teacher, linked_student
@@ -129,10 +133,15 @@ begin
           select jsonb_agg(
             case when student ->> 'id' = linked_student then
               jsonb_set(
-                student,
-                '{attempts}',
-                (case when jsonb_typeof(student -> 'attempts') = 'array' then student -> 'attempts' else '[]'::jsonb end)
-                  || jsonb_build_array(attempt),
+                jsonb_set(
+                  student,
+                  '{attempts}',
+                  (case when jsonb_typeof(student -> 'attempts') = 'array' then student -> 'attempts' else '[]'::jsonb end)
+                    || jsonb_build_array(attempt),
+                  true
+                ),
+                '{learningProgress}',
+                coalesce(p_learning_progress, student -> 'learningProgress', jsonb_build_object('letters', '[]'::jsonb, 'syllables', '[]'::jsonb, 'words', '[]'::jsonb)),
                 true
               )
             else student end order by position

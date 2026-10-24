@@ -1,7 +1,7 @@
 import { createClient, Session, SupabaseClient } from '@supabase/supabase-js';
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { GameLibraryItem } from '../gameLibrary';
-import { LessonAttempt, StudentRecord } from '../components/StudentProfile';
+import { LessonAttempt, StudentLearningProgress, StudentRecord } from '../components/StudentProfile';
 import { LessonData } from '../types';
 
 export type WorkspaceSnapshot = {
@@ -70,12 +70,13 @@ export async function loadStudentPortal(token: string): Promise<StudentPortalDat
   return { student: data.student as StudentRecord, games: Array.isArray(data.games) ? data.games : [] };
 }
 
-export async function saveStudentPortalAttempt(token: string, lessonId: string, points: number): Promise<LessonAttempt> {
+export async function saveStudentPortalAttempt(token: string, lessonId: string, points: number, learningProgress: StudentLearningProgress): Promise<LessonAttempt> {
   if (!client) throw new Error('Облачное хранилище не настроено.');
   const { data, error } = await client.rpc('record_student_portal_attempt', {
     p_token_hash: await hashPortalToken(token),
     p_lesson_id: lessonId,
     p_points: points,
+    p_learning_progress: learningProgress,
   });
   if (error) throw error;
   return data as LessonAttempt;

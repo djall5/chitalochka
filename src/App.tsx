@@ -14,7 +14,7 @@ import { Step9Memory } from './components/steps/Step9Memory';
 import { Step10FillJar } from './components/steps/Step10FillJar';
 import { LessonEditor } from './components/editor/LessonEditor';
 import { LessonBuilder, TeacherWorkspace } from './components/TeacherWorkspace';
-import { LessonAttempt, StudentProfile, StudentRecord } from './components/StudentProfile';
+import { collectLessonLearningProgress, LessonAttempt, mergeLearningProgress, StudentProfile, StudentRecord } from './components/StudentProfile';
 import { StudentSelection } from './components/StudentSelection';
 import { cloneLesson, DEFAULT_GAME_LIBRARY, GameLibraryItem, GameStepKey, gameStepIndex, lessonGameOrder } from './gameLibrary';
 import { playTransitionSound, isSoundMuted, toggleSound } from './utils/audio';
@@ -449,10 +449,14 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
     if (collaboration.role === 'student') collaboration.publishAction('завершил урок');
     if (!completedRun.current && activeStudent) {
       completedRun.current = true;
+      const learningProgress = collectLessonLearningProgress(lesson, orderedGames.map(game => ({
+        stepKey: game.stepKey,
+        config: lesson.gameInstances?.[game.id]?.config[game.stepKey],
+      })));
       if (studentPortalToken) {
         try {
-          const attempt = await saveStudentPortalAttempt(studentPortalToken, lesson.id, score);
-          const next = students.map(student => student.id === activeStudent.id ? { ...student, attempts: [...student.attempts, attempt] } : student);
+          const attempt = await saveStudentPortalAttempt(studentPortalToken, lesson.id, score, learningProgress);
+          const next = students.map(student => student.id === activeStudent.id ? { ...student, attempts: [...student.attempts, attempt], learningProgress: mergeLearningProgress(student.learningProgress, learningProgress) } : student);
           persistStudents(next);
           showToast('Результат сохранён в кабинете');
         } catch (error) {
@@ -462,7 +466,7 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
         }
       } else {
         const attempt: LessonAttempt = { id: crypto.randomUUID(), lessonId: lesson.id, lessonTitle: lesson.title, points: score, completedAt: new Date().toISOString() };
-        const next = students.map(student => student.id === activeStudent.id ? { ...student, attempts: [...student.attempts, attempt] } : student);
+        const next = students.map(student => student.id === activeStudent.id ? { ...student, attempts: [...student.attempts, attempt], learningProgress: mergeLearningProgress(student.learningProgress, learningProgress) } : student);
         persistStudents(next);
       }
     }
@@ -499,7 +503,7 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
         {screen === 'student-select' && <StudentSelection students={students} onSelect={handleSelectStudent} onCreate={handleCreateStudent} />}
         {screen === 'student-portal' && activeStudent && <StudentPortalDashboard student={activeStudent} onStart={item => handleOpenLesson(item, 'play')} />}
         {screen === 'library' && <TeacherWorkspace lessons={lessons} games={games} onNewLesson={handleNewLesson} onUseGameInLesson={handleUseGameInLesson} onOpenLesson={handleOpenLesson} onDeleteLesson={handleDeleteLesson} onCreateGame={handleCreateGame} onOpenStudent={() => setScreen('student')} studentName={studentName} onSwitchStudent={() => setScreen('student-select')} />}
-        {screen === 'student' && activeStudent && <StudentProfile studentId={activeStudent.id} name={studentName} attempts={studentAttempts} onNameChange={handleStudentName} onBack={() => setScreen('library')} onCreatePortalLink={createStudentPortalLink} />}
+        {screen === 'student' && activeStudent && <StudentProfile studentId={activeStudent.id} name={studentName} attempts={studentAttempts} learningProgress={activeStudent.learningProgress} onNameChange={handleStudentName} onLearningProgressChange={learningProgress => persistStudents(students.map(student => student.id === activeStudent.id ? { ...student, learningProgress } : student))} onBack={() => setScreen('library')} onCreatePortalLink={createStudentPortalLink} />}
         {screen === 'builder' && <LessonBuilder key={lesson.id} initialLesson={lesson} games={games} isEditing={builderEditing} onBack={() => setScreen('library')} onSave={handleSaveBuiltLesson} onPreview={handlePreviewBuiltLesson} />}
         {screen === 'edit' && <LessonEditor lesson={lesson} onSave={handleSaveLesson} onClose={() => setScreen('play')} activeStepTab={editorStartTab} />}
         {(screen === 'play' || screen === 'preview') && <div ref={lessonSurfaceRef} className="w-full max-w-[650px] bg-white/95 backdrop-blur-md rounded-3xl shadow-2xl border-2 border-pink-200 p-4 md:p-7 relative text-center">
