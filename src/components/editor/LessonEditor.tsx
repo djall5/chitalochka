@@ -108,10 +108,17 @@ export const LessonEditor: React.FC<Props> = ({
   const handleUpdatePalette = (idx: number, patch: Partial<PaletteItem>) => {
     setData(prev => {
       const newPalette = [...prev.step1.palette];
+      const previousSyllable = newPalette[idx].syllable;
       newPalette[idx] = { ...newPalette[idx], ...patch };
       return {
         ...prev,
-        step1: { ...prev.step1, palette: newPalette },
+        step1: {
+          ...prev.step1,
+          palette: newPalette,
+          cells: patch.syllable === undefined
+            ? prev.step1.cells
+            : prev.step1.cells.map(cell => cell === previousSyllable ? newPalette[idx].syllable : cell),
+        },
       };
     });
   };
@@ -542,6 +549,7 @@ export const LessonEditor: React.FC<Props> = ({
                   Добавить слог
                 </button>
               </div>
+              <p className="mb-3 text-[11px] font-semibold text-slate-500">Измените слог в образце — все карточки с этим слогом сразу обновятся.</p>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {data.step1.palette.map((item, idx) => (
