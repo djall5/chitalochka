@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Droplets, ShoppingBag, Sprout, X } from 'lucide-react';
 import { applyDesertAction, DESERT_CATALOG, DESERT_CELL_COUNT, DESERT_COLS, DESERT_GROUND_TOP, DESERT_ROWS, DesertAction, DesertItemId, DesertState, desertBalance, desertCellAt } from '../desert/desertModel';
 
@@ -15,6 +15,30 @@ type Props = {
 
 const assets = { sand: 'desert/sand.png', soil: 'desert/soil.png', sprouts: 'desert/sprouts.png', green: 'desert/green.png' };
 const sampleCharacter = `${import.meta.env.BASE_URL}characters/sample-boy/`;
+const sceneWidth = 1200;
+const sceneHeight = 675;
+const cellWidth = sceneWidth / DESERT_COLS;
+const cellHeight = sceneHeight * (1 - DESERT_GROUND_TOP) / DESERT_ROWS;
+
+// A stable, slightly uneven brush dab for each plot. Neighbouring dabs overlap into one painted area.
+function makeBrushPaths(width: number, height: number) {
+  const cellPixelWidth = width / DESERT_COLS;
+  const cellPixelHeight = height * (1 - DESERT_GROUND_TOP) / DESERT_ROWS;
+  const radius = Math.hypot(cellPixelWidth / 2, cellPixelHeight / 2) * 1.15;
+  const radiusX = radius * sceneWidth / width;
+  const radiusY = radius * sceneHeight / height;
+  return Array.from({ length: DESERT_CELL_COUNT }, (_, index) => {
+    const cx = (index % DESERT_COLS + 0.5) * cellWidth;
+    const cy = sceneHeight * DESERT_GROUND_TOP + (Math.floor(index / DESERT_COLS) + 0.5) * cellHeight;
+    const phase = index * 2.39996;
+    const points = Array.from({ length: 32 }, (_, step) => {
+      const angle = step * Math.PI * 2 / 32;
+      const wobble = 1 + 0.045 * Math.sin(angle * 3 + phase) + 0.03 * Math.sin(angle * 5 - phase * 0.7) + 0.02 * Math.sin(angle * 9 + phase * 1.3);
+      return `${(cx + Math.cos(angle) * radiusX * wobble).toFixed(1)} ${(cy + Math.sin(angle) * radiusY * wobble).toFixed(1)}`;
+    });
+    return `M ${points.join(' L ')} Z`;
+  });
+}
 
 export function DesertGame({ studentName, earned, desert, character, onAction, onClose }: Props) {
   const [world, setWorld] = useState(desert);
@@ -23,10 +47,22 @@ export function DesertGame({ studentName, earned, desert, character, onAction, o
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('Купи воду, затем проведи пальцем или мышью по песку.');
   const [hero, setHero] = useState({ x: 0.5, y: 0.73, direction: 'front' as keyof Required<CharacterImages>, facesLeft: false });
+  const [sceneSize, setSceneSize] = useState({ width: sceneWidth, height: sceneHeight });
   const sceneRef = useRef<HTMLDivElement>(null);
-  const strokeRef = useRef<{ base: DesertState; cells: Set<number> } | null>(null);
+  const strokeRef = useRef<{ base: DesertState; cells: Set<number>; last: { x: number; y: number } } | null>(null);
   const maskId = useId().replaceAll(':', '');
+  const brushPaths = useMemo(() => makeBrushPaths(sceneSize.width, sceneSize.height), [sceneSize.width, sceneSize.height]);
   useEffect(() => setWorld(desert), [desert]);
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    const observer = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      if (width > 0 && height > 0) setSceneSize(previous => previous.width === width && previous.height === height ? previous : { width, height });
+    });
+    observer.observe(scene);
+    return () => observer.disconnect();
+  }, []);
   const balance = desertBalance(earned, world);
   const greenCount = world.cells.filter(stage => stage === 3).length;
   const selectedItem = DESERT_CATALOG.find(item => item.id === selected)!;
@@ -71,7 +107,7 @@ export function DesertGame({ studentName, earned, desert, character, onAction, o
     event.currentTarget.setPointerCapture(event.pointerId);
     moveHero(point.x, point.y);
     if (selected === 'water') {
-      strokeRef.current = { base: world, cells: new Set() };
+      strokeRef.current = { base: world, cells: new Set(), last: point };
       addWaterPoint(point.x, point.y);
     } else {
       void commit({ type: 'place', itemId: selected, id: crypto.randomUUID(), ...point });
@@ -87,13 +123,28 @@ export function DesertGame({ studentName, earned, desert, character, onAction, o
     catch { /* the message appears when the stroke finishes */ }
   }
 
+  function extendStroke(x: number, y: number) {
+    const stroke = strokeRef.current;
+    if (!stroke) return;
+    const from = stroke.last;
+    const distance = Math.max(Math.abs(x - from.x) * DESERT_COLS, Math.abs(y - from.y) * DESERT_ROWS / (1 - DESERT_GROUND_TOP));
+    const steps = Math.min(80, Math.max(1, Math.ceil(distance * 3)));
+    for (let step = 1; step <= steps; step += 1) {
+      const portion = step / steps;
+      addWaterPoint(from.x + (x - from.x) * portion, from.y + (y - from.y) * portion);
+    }
+    stroke.last = { x, y };
+  }
+
   function onPointerMove(event: React.PointerEvent<HTMLDivElement>) {
     if (!strokeRef.current) return;
     const point = scenePoint(event);
-    if (point) { addWaterPoint(point.x, point.y); moveHero(point.x, point.y); }
+    if (point) { extendStroke(point.x, point.y); moveHero(point.x, point.y); }
   }
 
-  function finishStroke() {
+  function finishStroke(event: React.PointerEvent<HTMLDivElement>) {
+    const point = scenePoint(event);
+    if (point) extendStroke(point.x, point.y);
     const stroke = strokeRef.current;
     strokeRef.current = null;
     if (!stroke) return;
@@ -112,7 +163,7 @@ export function DesertGame({ studentName, earned, desert, character, onAction, o
 
     <div ref={sceneRef} className="relative min-h-0 flex-1 select-none overflow-hidden touch-none" onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={finishStroke} onPointerCancel={finishStroke}>
       <svg className="absolute inset-0 h-full w-full" viewBox="0 0 1200 675" preserveAspectRatio="none" aria-hidden="true">
-        <defs><filter id={`${maskId}-soft`} x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="7" /></filter>{[1, 2, 3].map(stage => <mask id={`${maskId}-${stage}`} key={stage} maskUnits="userSpaceOnUse" x="0" y="0" width="1200" height="675"><rect width="1200" height="675" fill="black" /><g filter={`url(#${maskId}-soft)`}>{world.cells.map((level, index) => level >= stage && <rect key={index} x={(index % DESERT_COLS) * 100 - 1} y={DESERT_GROUND_TOP * 675 + Math.floor(index / DESERT_COLS) * ((1 - DESERT_GROUND_TOP) * 675 / DESERT_ROWS) - 1} width="102" height={(1 - DESERT_GROUND_TOP) * 675 / DESERT_ROWS + 2} rx="18" fill="white" />)}</g></mask>)}</defs>
+        <defs><filter id={`${maskId}-soft`} x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="7" /></filter>{[1, 2, 3].map(stage => <mask id={`${maskId}-${stage}`} key={stage} maskUnits="userSpaceOnUse" x="0" y="0" width="1200" height="675"><rect width="1200" height="675" fill="black" /><g filter={`url(#${maskId}-soft)`}>{world.cells.map((level, index) => level >= stage && <path key={index} d={brushPaths[index]} fill="white"><animate attributeName="opacity" from="0" to="1" dur="0.35s" fill="freeze" /></path>)}</g></mask>)}</defs>
         <image href={`${import.meta.env.BASE_URL}${assets.sand}`} width="1200" height="675" preserveAspectRatio="none" />
         <image href={`${import.meta.env.BASE_URL}${assets.soil}`} width="1200" height="675" preserveAspectRatio="none" mask={`url(#${maskId}-1)`} />
         <image href={`${import.meta.env.BASE_URL}${assets.sprouts}`} width="1200" height="675" preserveAspectRatio="none" mask={`url(#${maskId}-2)`} />
