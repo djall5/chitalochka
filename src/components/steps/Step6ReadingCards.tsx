@@ -58,10 +58,11 @@ export const Step6ReadingCards: React.FC<Props> = ({ config, onPrev, onCorrectAn
       <div className="grid grid-cols-2 gap-3 w-full mb-4">
         {config.cards.map(card => {
           const isRead = readCardIds.includes(card.id);
+          const displayWord = card.displayWord.replace(/-/g, '‑');
           return (
             <button
               key={card.id}
-              onClick={() => handleCardClick(card.id, card.speakWord, card.displayWord)}
+              onClick={() => handleCardClick(card.id, card.speakWord, displayWord)}
               className={`group flex flex-col items-center justify-center p-3.5 rounded-2xl border-2 transition-all duration-200 cursor-pointer shadow-xs select-none ${
                 isRead
                   ? 'bg-emerald-50/90 border-emerald-400 text-emerald-950 scale-102 ring-2 ring-emerald-200'
@@ -72,7 +73,7 @@ export const Step6ReadingCards: React.FC<Props> = ({ config, onPrev, onCorrectAn
                 {card.icon || '📖'}
               </div>
               <div className="text-base md:text-lg font-black tracking-wide text-slate-800">
-                <span>{card.displayWord}</span>
+                <span className="whitespace-nowrap">{displayWord}</span>
               </div>
               {isRead && (
                 <span className="text-[10px] font-bold text-emerald-600 mt-1 flex items-center gap-0.5">

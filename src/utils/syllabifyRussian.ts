@@ -4,6 +4,7 @@ const STOPS = new Set('бпвфгкдтзс');
 
 function syllabifyWord(source: string) {
   const word = source.replace(/-/g, '');
+  if ([...word].length <= 3) return word;
   const vowelPositions = [...word].flatMap((letter, index) => VOWELS.has(letter.toLocaleLowerCase('ru-RU')) ? [index] : []);
   if (vowelPositions.length < 2) return word;
 
