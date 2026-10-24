@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ClassroomState, LessonRoom, RoomCursor, RoomInteraction, RoomMember, RoomRole } from './lessonRoom';
+import { ClassroomState, ClassroomViewState, LessonRoom, RoomCursor, RoomInteraction, RoomMember, RoomRole } from './lessonRoom';
 
 export function useLessonRoom(callbacks: {
   onState: (state: ClassroomState) => void;
   onProgress: (score: number) => void;
   onStep: (step: number) => void;
+  onView: (view: ClassroomViewState) => void;
   onAction: (action: { role: RoomRole; name: string; label: string }) => void;
   onInteraction: (interaction: RoomInteraction) => void;
 }) {
@@ -27,6 +28,7 @@ export function useLessonRoom(callbacks: {
       onState: state => callbacksRef.current.onState(state),
       onProgress: score => callbacksRef.current.onProgress(score),
       onStep: step => callbacksRef.current.onStep(step),
+      onView: view => callbacksRef.current.onView(view),
       onMembers: connected => {
         setMembers(connected);
       },
@@ -89,6 +91,7 @@ export function useLessonRoom(callbacks: {
     setLatestState: (state: ClassroomState) => room.setLatestState(state),
     publishProgress: (score: number) => room.publishProgress(score),
     publishStep: (step: number) => room.publishStep(step),
+    publishView: (view: ClassroomViewState) => room.publishView(view),
     publishCursor: (x: number, y: number, clickAt?: number) => room.publishCursor(x, y, clickAt),
     publishInteraction: (interaction: Omit<RoomInteraction, 'role' | 'name'>) => room.publishInteraction(interaction),
     publishAction: (label: string) => room.publishAction(label),

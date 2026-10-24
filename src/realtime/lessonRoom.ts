@@ -7,6 +7,13 @@ export interface ClassroomState {
   currentStep: number;
   score: number;
   studentName?: string;
+  showCompletion?: boolean;
+}
+
+export interface ClassroomViewState {
+  currentStep: number;
+  score: number;
+  showCompletion: boolean;
 }
 
 export interface RoomMember {
@@ -31,6 +38,8 @@ export interface RoomInteraction {
   path: number[];
   x: number;
   y: number;
+  targetX: number;
+  targetY: number;
   pointerType: string;
   button: number;
 }
@@ -39,6 +48,7 @@ export interface LessonRoomCallbacks {
   onState?: (state: ClassroomState) => void;
   onProgress?: (score: number) => void;
   onStep?: (step: number) => void;
+  onView?: (view: ClassroomViewState) => void;
   onMembers?: (members: RoomMember[]) => void;
   onCursor?: (cursor: RoomCursor | null) => void;
   onInteraction?: (interaction: RoomInteraction) => void;
@@ -102,6 +112,7 @@ export class LessonRoom {
       .on('broadcast', { event: 'lesson-state' }, ({ payload }) => this.callbacks.onState?.(payload as ClassroomState))
       .on('broadcast', { event: 'student-progress' }, ({ payload }) => this.callbacks.onProgress?.(Number(payload.score) || 0))
       .on('broadcast', { event: 'student-step' }, ({ payload }) => this.callbacks.onStep?.(Number(payload.step) || 0))
+      .on('broadcast', { event: 'lesson-view' }, ({ payload }) => this.callbacks.onView?.(payload as ClassroomViewState))
       .on('broadcast', { event: 'cursor' }, ({ payload }) => this.callbacks.onCursor?.(payload as RoomCursor))
       .on('broadcast', { event: 'interaction' }, ({ payload }) => this.callbacks.onInteraction?.(payload as RoomInteraction))
       .on('broadcast', { event: 'action' }, ({ payload }) => this.callbacks.onAction?.(payload as { role: RoomRole; name: string; label: string }))
@@ -153,6 +164,11 @@ export class LessonRoom {
     if (this.member?.role === 'student' && this.channel) {
       await this.channel.send({ type: 'broadcast', event: 'student-step', payload: { step } });
     }
+  }
+
+  publishView(view: ClassroomViewState) {
+    if (!this.channel || !this.member) return;
+    void this.channel.send({ type: 'broadcast', event: 'lesson-view', payload: view });
   }
 
   publishCursor(x: number, y: number, clickAt?: number) {

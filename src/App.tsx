@@ -156,10 +156,16 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
       setRoomStudentName(incoming.studentName || 'Ученик');
       setCurrentStep(incoming.currentStep);
       setScore(incoming.score);
+      setShowCompletion(Boolean(incoming.showCompletion));
       setScreen('play');
     },
     onProgress: setScore,
     onStep: setCurrentStep,
+    onView: incoming => {
+      setCurrentStep(incoming.currentStep);
+      setScore(incoming.score);
+      setShowCompletion(incoming.showCompletion);
+    },
     onAction: () => {},
     onInteraction: interaction => {
       const surface = lessonSurfaceRef.current;
@@ -167,8 +173,11 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
       const target = findElementAtPath(surface, interaction.path);
       if (!(target instanceof HTMLElement)) return;
       const bounds = surface.getBoundingClientRect();
-      const clientX = bounds.left + interaction.x * bounds.width;
-      const clientY = bounds.top + interaction.y * bounds.height;
+      const targetBounds = target.getBoundingClientRect();
+      const targetX = Number.isFinite(interaction.targetX) ? interaction.targetX : interaction.x;
+      const targetY = Number.isFinite(interaction.targetY) ? interaction.targetY : interaction.y;
+      const clientX = targetBounds.width > 0 ? targetBounds.left + targetX * targetBounds.width : bounds.left + interaction.x * bounds.width;
+      const clientY = targetBounds.height > 0 ? targetBounds.top + targetY * targetBounds.height : bounds.top + interaction.y * bounds.height;
       const isDown = interaction.type === 'pointerdown';
       const isUp = interaction.type === 'pointerup';
       const buttons = isDown || (!isUp && interaction.type === 'pointermove') ? 1 : 0;
@@ -281,7 +290,10 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
       const x = (event.clientX - bounds.left) / bounds.width;
       const y = (event.clientY - bounds.top) / bounds.height;
       if (x < 0 || x > 1 || y < 0 || y > 1) return;
-      collaboration.publishInteraction({ type, path, x, y, pointerType: event.pointerType, button: event.button });
+      const targetBounds = event.target.getBoundingClientRect();
+      const targetX = (event.clientX - targetBounds.left) / targetBounds.width;
+      const targetY = (event.clientY - targetBounds.top) / targetBounds.height;
+      collaboration.publishInteraction({ type, path, x, y, targetX, targetY, pointerType: event.pointerType, button: event.button });
     };
     const onMove = (event: PointerEvent) => {
       if (!event.isTrusted) return;
@@ -316,6 +328,11 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
       surface.removeEventListener('pointerleave', onLeave);
     };
   }, [collaboration.roomId, collaboration.status]);
+
+  useEffect(() => {
+    if (!collaboration.roomId || collaboration.status !== 'connected' || screen !== 'play') return;
+    collaboration.publishView({ currentStep, score, showCompletion });
+  }, [collaboration.roomId, collaboration.status, screen, currentStep, score, showCompletion]);
 
   const updateActiveStudentLessons = (nextLessons: LessonData[]) => {
     if (!activeStudent) return;
@@ -503,7 +520,7 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
     persistStudents(students.map(student => student.id === activeStudent.id ? { ...student, name } : student));
   };
 
-  const createClassroom = (name: string) => collaboration.create(name, { lesson, currentStep, score, studentName });
+  const createClassroom = (name: string) => collaboration.create(name, { lesson, currentStep, score, studentName, showCompletion });
 
   return (
     <div className="min-h-screen w-full flex flex-col items-center justify-between p-3 md:p-6 bg-cover bg-center bg-no-repeat relative font-sans text-slate-800" style={{ backgroundImage: `linear-gradient(rgba(253, 232, 244, 0.75), rgba(245, 235, 255, 0.82)), url('https://images.unsplash.com/photo-1503676260728-1c00da094a0b?auto=format&fit=crop&w=1920&q=80')`, backgroundAttachment: 'fixed' }}>
