@@ -127,6 +127,8 @@ export interface LessonData {
   id: string;
   title: string;
   subtitle: string;
+  /** Lesson assembled quietly from the game library before the teacher names it. */
+  isDraft?: boolean;
   themeColor: string; // e.g. "#ec4899"
   bgGradient: string;
   targetLetter?: string;

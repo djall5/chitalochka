@@ -300,19 +300,21 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
   };
 
   const handleSaveLesson = (updated: LessonData) => {
-    setLesson(updated);
-    try { localStorage.setItem(ACTIVE_LESSON_KEY, JSON.stringify(updated)); } catch { /* library copy is still saved below */ }
-    const exists = lessons.some(item => item.id === updated.id);
-    updateActiveStudentLessons(exists ? lessons.map(item => item.id === updated.id ? cloneLesson(updated) : item) : [cloneLesson(updated), ...lessons]);
+    const savedLesson = { ...updated, isDraft: updated.isDraft && !updated.title.trim() };
+    setLesson(savedLesson);
+    try { localStorage.setItem(ACTIVE_LESSON_KEY, JSON.stringify(savedLesson)); } catch { /* library copy is still saved below */ }
+    const exists = lessons.some(item => item.id === savedLesson.id);
+    updateActiveStudentLessons(exists ? lessons.map(item => item.id === savedLesson.id ? cloneLesson(savedLesson) : item) : [cloneLesson(savedLesson), ...lessons]);
     showToast('Урок сохранён в библиотеку');
   };
 
   const handleSaveBuiltLesson = (updated: LessonData, playAfterSave: boolean) => {
-    setLesson(updated);
+    const savedLesson = { ...updated, isDraft: updated.isDraft && !updated.title.trim() };
+    setLesson(savedLesson);
     setCurrentStep(0);
-    try { localStorage.setItem(ACTIVE_LESSON_KEY, JSON.stringify(updated)); } catch { /* continue with the in-memory lesson */ }
-    const exists = lessons.some(item => item.id === updated.id);
-    updateActiveStudentLessons(exists ? lessons.map(item => item.id === updated.id ? cloneLesson(updated) : item) : [cloneLesson(updated), ...lessons]);
+    try { localStorage.setItem(ACTIVE_LESSON_KEY, JSON.stringify(savedLesson)); } catch { /* continue with the in-memory lesson */ }
+    const exists = lessons.some(item => item.id === savedLesson.id);
+    updateActiveStudentLessons(exists ? lessons.map(item => item.id === savedLesson.id ? cloneLesson(savedLesson) : item) : [cloneLesson(savedLesson), ...lessons]);
     showToast('Урок добавлен в библиотеку');
     if (playAfterSave) resetSessionScore();
     setScreen(playAfterSave ? 'play' : 'library');
@@ -336,10 +338,36 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
     draft.subtitle = '';
     draft.targetLetter = '';
     draft.gameOrder = preselectedGameId ? [preselectedGameId] : [];
+    draft.isDraft = false;
     setLesson(draft);
     setBuilderEditing(false);
     setCurrentStep(0);
     setScreen('builder');
+  };
+
+  const handleUseGameInLesson = (gameId: string) => {
+    const existingDraft = lessons.find(item => item.isDraft);
+    const draft = existingDraft ? cloneLesson(existingDraft) : cloneLesson(defaultLessonY);
+    if (!existingDraft) {
+      draft.id = `lesson-${crypto.randomUUID()}`;
+      draft.title = '';
+      draft.subtitle = '';
+      draft.targetLetter = '';
+      draft.gameOrder = [];
+      draft.isDraft = true;
+    }
+    if (draft.gameOrder?.includes(gameId)) {
+      showToast('Эта игра уже добавлена в черновик урока');
+      return;
+    }
+    draft.gameOrder = [...(draft.gameOrder || []), gameId];
+    setLesson(draft);
+    setCurrentStep(0);
+    try { localStorage.setItem(ACTIVE_LESSON_KEY, JSON.stringify(draft)); } catch { /* library copy is still saved below */ }
+    updateActiveStudentLessons(existingDraft
+      ? lessons.map(item => item.id === draft.id ? cloneLesson(draft) : item)
+      : [cloneLesson(draft), ...lessons]);
+    showToast(existingDraft ? 'Игра добавлена в черновик урока' : 'Создан черновик урока — добавляйте в него другие игры');
   };
 
   const handleCreateGame = (game: GameLibraryItem) => {
@@ -462,7 +490,7 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
         {screen === 'play' && !studentPortalToken && <ClassroomPanel configured={collaboration.configured} roomId={collaboration.roomId} role={collaboration.role} status={collaboration.status} statusMessage={collaboration.statusMessage} members={collaboration.members} lastAction={collaboration.lastAction} onCreate={createClassroom} onJoin={collaboration.join} onLeave={collaboration.leave} />}
         {screen === 'student-select' && <StudentSelection students={students} onSelect={handleSelectStudent} onCreate={handleCreateStudent} />}
         {screen === 'student-portal' && activeStudent && <StudentPortalDashboard student={activeStudent} onStart={item => handleOpenLesson(item, 'play')} />}
-        {screen === 'library' && <TeacherWorkspace lessons={lessons} games={games} onNewLesson={handleNewLesson} onOpenLesson={handleOpenLesson} onDeleteLesson={handleDeleteLesson} onCreateGame={handleCreateGame} onOpenStudent={() => setScreen('student')} studentName={studentName} onSwitchStudent={() => setScreen('student-select')} />}
+        {screen === 'library' && <TeacherWorkspace lessons={lessons} games={games} onNewLesson={handleNewLesson} onUseGameInLesson={handleUseGameInLesson} onOpenLesson={handleOpenLesson} onDeleteLesson={handleDeleteLesson} onCreateGame={handleCreateGame} onOpenStudent={() => setScreen('student')} studentName={studentName} onSwitchStudent={() => setScreen('student-select')} />}
         {screen === 'student' && activeStudent && <StudentProfile studentId={activeStudent.id} name={studentName} attempts={studentAttempts} onNameChange={handleStudentName} onBack={() => setScreen('library')} onCreatePortalLink={createStudentPortalLink} />}
         {screen === 'builder' && <LessonBuilder key={lesson.id} initialLesson={lesson} games={games} isEditing={builderEditing} onBack={() => setScreen('library')} onSave={handleSaveBuiltLesson} />}
         {screen === 'edit' && <LessonEditor lesson={lesson} onSave={handleSaveLesson} onClose={() => setScreen('play')} activeStepTab={editorStartTab} />}

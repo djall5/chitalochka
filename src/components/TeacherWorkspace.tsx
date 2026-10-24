@@ -11,6 +11,7 @@ type Props = {
   lessons: LessonData[];
   games: GameLibraryItem[];
   onNewLesson: (preselectedGameId?: string) => void;
+  onUseGameInLesson: (gameId: string) => void;
   onOpenLesson: (lesson: LessonData, mode: 'play' | 'edit') => void;
   onDeleteLesson: (id: string) => void;
   onCreateGame: (game: GameLibraryItem) => void;
@@ -23,7 +24,7 @@ const panel = 'bg-white/90 backdrop-blur-md rounded-3xl border border-pink-200 s
 const pinkButton = 'inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-pink-500 to-purple-600 px-4 py-2.5 text-xs font-black text-white shadow-md transition hover:brightness-105 active:scale-[.98]';
 const lightButton = 'inline-flex items-center justify-center gap-2 rounded-xl border border-pink-200 bg-pink-50 px-3 py-2 text-xs font-black text-pink-700 transition hover:bg-pink-100';
 
-export function TeacherWorkspace({ lessons, games, onNewLesson, onOpenLesson, onDeleteLesson, onCreateGame, onOpenStudent, studentName, onSwitchStudent }: Props) {
+export function TeacherWorkspace({ lessons, games, onNewLesson, onUseGameInLesson, onOpenLesson, onDeleteLesson, onCreateGame, onOpenStudent, studentName, onSwitchStudent }: Props) {
   const [tab, setTab] = useState<'lessons' | 'games'>('lessons');
   const [query, setQuery] = useState('');
   const [showNewGame, setShowNewGame] = useState(false);
@@ -55,17 +56,17 @@ export function TeacherWorkspace({ lessons, games, onNewLesson, onOpenLesson, on
         {tab === 'lessons' ? (
           filteredLessons.length ? <div className="grid gap-3 pt-4 sm:grid-cols-2 xl:grid-cols-3">{filteredLessons.map(item => {
             const order = lessonGameOrder(item);
-            const lessonGames = order.map(id => games.find(game => game.id === id)).filter(Boolean) as GameLibraryItem[];
+            const lessonGames = order.map(id => games.find(game => game.id === (item.gameInstances?.[id]?.sourceGameId || id))).filter(Boolean) as GameLibraryItem[];
             return <article key={item.id} className="rounded-2xl border border-pink-100 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
               <div className="flex items-start justify-between gap-3"><div className="grid h-11 w-11 place-items-center rounded-2xl bg-pink-50 text-2xl">📖</div><span className="rounded-full bg-violet-50 px-2.5 py-1 text-[10px] font-black text-violet-600">{item.targetLetter ? `Буква ${item.targetLetter}` : 'Чтение'}</span></div>
-              <h2 className="mt-3 line-clamp-2 text-base font-black text-slate-800">{item.title}</h2><p className="mt-1 line-clamp-2 min-h-8 text-[11px] font-semibold leading-relaxed text-slate-500">{item.subtitle || 'Урок грамоты и чтения'}</p>
+              <h2 className="mt-3 line-clamp-2 text-base font-black text-slate-800">{item.title || 'Без названия'}</h2><p className="mt-1 line-clamp-2 min-h-8 text-[11px] font-semibold leading-relaxed text-slate-500">{item.subtitle || (item.isDraft ? 'Черновик: добавляйте игры из библиотеки, затем откройте и настройте урок.' : 'Урок грамоты и чтения')}</p>
               <div className="mt-3 flex items-center gap-2 text-[10px] font-bold text-slate-400"><Library className="h-3.5 w-3.5" />{order.length} игр</div>
               <div className="mt-3 flex flex-wrap gap-1.5">{lessonGames.slice(0, 4).map((game, i) => <span key={`${game.id}-${i}`} title={game.title} className="rounded-lg bg-pink-50 px-2 py-1 text-[10px] font-bold text-pink-700">{game.emoji} {game.title}</span>)}{lessonGames.length > 4 && <span className="rounded-lg bg-slate-50 px-2 py-1 text-[10px] font-bold text-slate-500">+{lessonGames.length - 4}</span>}</div>
               <div className="mt-4 flex gap-2"><button className={`${pinkButton} flex-1`} onClick={() => onOpenLesson(item, 'play')}><Play className="h-3.5 w-3.5 fill-current" />Играть</button><button className={lightButton} title="Изменить игры и содержание" onClick={() => onOpenLesson(item, 'edit')}><Pencil className="h-3.5 w-3.5" /></button><button className="rounded-xl bg-slate-50 px-3 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600" title="Удалить урок" onClick={() => onDeleteLesson(item.id)}><Trash2 className="h-3.5 w-3.5" /></button></div>
             </article>;
           })}</div> : <EmptyState icon="📚" title={query ? 'Ничего не найдено' : 'Пока нет уроков'} text={query ? 'Попробуйте изменить запрос.' : 'Создайте урок и добавьте в него игры из библиотеки.'} action={!query ? <button className={pinkButton} onClick={() => onNewLesson()}><Plus className="h-4 w-4" />Создать первый урок</button> : undefined} />
         ) : (
-          filteredGames.length ? <div className="grid gap-3 pt-4 sm:grid-cols-2 xl:grid-cols-3">{filteredGames.map(game => <article key={game.id} className="rounded-2xl border border-pink-100 bg-white p-4 shadow-sm"><div className="flex items-start justify-between"><div className="grid h-12 w-12 place-items-center rounded-2xl bg-pink-50 text-2xl">{game.emoji}</div><span className="rounded-full bg-sky-50 px-2.5 py-1 text-[10px] font-black text-sky-700">{game.category}</span></div><h2 className="mt-3 text-base font-black text-slate-800">{game.title}</h2><p className="mt-1 min-h-10 text-[11px] font-semibold leading-relaxed text-slate-500">{game.description}</p><div className="mt-3 flex items-center justify-between"><span className="text-[10px] font-bold text-slate-400">Механика: {game.stepKey.replace('step', 'игра ')}</span>{game.custom && <span className="rounded-full bg-emerald-50 px-2 py-1 text-[9px] font-black text-emerald-700">Ваша игра</span>}</div><button className={`${lightButton} mt-4 w-full`} onClick={() => onNewLesson(game.id)}><CopyPlus className="h-3.5 w-3.5" />Использовать в уроке</button></article>)}</div> : <EmptyState icon="🎮" title="Игр не найдено" text="Измените запрос или добавьте новую игру." />
+          filteredGames.length ? <div className="grid gap-3 pt-4 sm:grid-cols-2 xl:grid-cols-3">{filteredGames.map(game => <article key={game.id} className="rounded-2xl border border-pink-100 bg-white p-4 shadow-sm"><div className="flex items-start justify-between"><div className="grid h-12 w-12 place-items-center rounded-2xl bg-pink-50 text-2xl">{game.emoji}</div><span className="rounded-full bg-sky-50 px-2.5 py-1 text-[10px] font-black text-sky-700">{game.category}</span></div><h2 className="mt-3 text-base font-black text-slate-800">{game.title}</h2><p className="mt-1 min-h-10 text-[11px] font-semibold leading-relaxed text-slate-500">{game.description}</p><div className="mt-3 flex items-center justify-between"><span className="text-[10px] font-bold text-slate-400">Механика: {game.stepKey.replace('step', 'игра ')}</span>{game.custom && <span className="rounded-full bg-emerald-50 px-2 py-1 text-[9px] font-black text-emerald-700">Ваша игра</span>}</div><button className={`${lightButton} mt-4 w-full`} onClick={() => onUseGameInLesson(game.id)}><CopyPlus className="h-3.5 w-3.5" />Использовать в уроке</button></article>)}</div> : <EmptyState icon="🎮" title="Игр не найдено" text="Измените запрос или добавьте новую игру." />
         )}
       </div>
 
