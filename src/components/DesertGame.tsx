@@ -2,7 +2,8 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Droplets, ShoppingBag, Sprout, X } from 'lucide-react';
 import { applyDesertAction, DESERT_CATALOG, DESERT_CELL_COUNT, DESERT_COLS, DESERT_GROUND_TOP, DESERT_ROWS, DesertAction, DesertItemId, DesertState, desertBalance, desertCellAt } from '../desert/desertModel';
 
-export type CharacterImages = Partial<Record<'front' | 'back' | 'side' | 'threeQuarter', string>>;
+type CharacterDirection = 'front' | 'back' | 'side' | 'threeQuarter';
+export type CharacterImages = Partial<Record<CharacterDirection | 'watering', string>>;
 
 type Props = {
   studentName: string;
@@ -74,7 +75,9 @@ export function DesertGame({ studentName, earned, desert, character, onAction, o
   const [waterQuantity, setWaterQuantity] = useState(1);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('Купи воду, затем проведи пальцем или мышью по песку.');
-  const [hero, setHero] = useState({ x: 0.5, y: 0.73, direction: 'front' as keyof Required<CharacterImages>, facesLeft: false });
+  const [hero, setHero] = useState({ x: 0.5, y: 0.73, direction: 'front' as CharacterDirection, facesLeft: false });
+  const [wateringPose, setWateringPose] = useState(false);
+  const wateringPoseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [sceneSize, setSceneSize] = useState({ width: sceneWidth, height: sceneHeight });
   const [reveals, setReveals] = useState<Set<string>>(() => new Set());
   const sceneRef = useRef<HTMLDivElement>(null);
@@ -102,6 +105,7 @@ export function DesertGame({ studentName, earned, desert, character, onAction, o
     observer.observe(scene);
     return () => observer.disconnect();
   }, []);
+  useEffect(() => () => { if (wateringPoseTimer.current) clearTimeout(wateringPoseTimer.current); }, []);
   const balance = desertBalance(earned, world);
   const greenCount = world.cells.filter(stage => stage === 3).length;
   const selectedItem = DESERT_CATALOG.find(item => item.id === selected)!;
@@ -164,6 +168,8 @@ export function DesertGame({ studentName, earned, desert, character, onAction, o
     const index = desertCellAt(x, y);
     if (!stroke || index === null || stroke.cells.has(index) || stroke.base.cells[index] >= 3 || stroke.cells.size >= stroke.base.water) return;
     stroke.cells.add(index);
+    if (wateringPoseTimer.current) clearTimeout(wateringPoseTimer.current);
+    setWateringPose(true);
     setReveals(current => new Set(current).add(`${index}:${stroke.base.cells[index] + 1}`));
     try { setWorld(applyDesertAction(stroke.base, earned, { type: 'water', cells: [...stroke.cells] })); }
     catch { /* the message appears when the stroke finishes */ }
@@ -198,6 +204,7 @@ export function DesertGame({ studentName, earned, desert, character, onAction, o
     const stroke = strokeRef.current;
     strokeRef.current = null;
     if (!stroke) return;
+    if (stroke.cells.size) wateringPoseTimer.current = setTimeout(() => setWateringPose(false), 1000);
     if (!stroke.cells.size) { setWorld(stroke.base); setMessage(stroke.base.water ? 'Выбери песчаный участок.' : 'В лейке пусто. Купи воду в магазине.'); return; }
     void commit({ type: 'water', cells: [...stroke.cells] }, stroke.base);
   }
@@ -210,7 +217,11 @@ export function DesertGame({ studentName, earned, desert, character, onAction, o
     setHoverPoint(null);
   }
 
-  const imageForDirection = character?.[hero.direction] || `${sampleCharacter}${hero.direction === 'threeQuarter' ? 'three-quarter' : hero.direction}.png`;
+  const direction = hero.direction;
+  const showWateringImage = wateringPose && (Boolean(character?.watering) || !character || Object.keys(character).length === 0);
+  const imageForDirection = showWateringImage
+    ? character?.watering || `${sampleCharacter}watering.png`
+    : character?.[direction] || `${sampleCharacter}${direction === 'threeQuarter' ? 'three-quarter' : direction}.png`;
 
   return <div className="fixed inset-0 z-[80] flex flex-col overflow-hidden bg-[#173246] font-sans text-white" role="dialog" aria-modal="true" aria-label={`Пустыня ученика ${studentName}`}>
     <header className="z-10 flex flex-wrap items-center justify-between gap-2 bg-[#153b3b]/95 px-3 py-2 shadow-lg sm:px-5">
@@ -233,7 +244,7 @@ export function DesertGame({ studentName, earned, desert, character, onAction, o
         return item && sprite && <img key={object.id} src={itemSpriteUrl(sprite.file)} alt={item.name} draggable={false} className="pointer-events-none absolute -translate-x-1/2 -translate-y-full object-contain drop-shadow-lg" style={itemSpriteStyle(sprite, object.x, object.y)} />;
       })}
       {previewPoint && <img src={itemSpriteUrl(itemSprites[selected]!.file)} alt={`Предпросмотр: ${selectedItem.name}`} draggable={false} className={`pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-full object-contain drop-shadow-xl ${previewValid ? 'opacity-75' : 'opacity-35 grayscale'}`} style={itemSpriteStyle(itemSprites[selected]!, previewPoint.x, previewPoint.y)} />}
-      <img src={imageForDirection} alt="Герой озеленяет пустыню" draggable={false} className="pointer-events-none absolute z-10 h-[min(26vh,180px)] w-auto object-contain drop-shadow-xl transition-[left,top] duration-700 ease-out" style={{ left: `${hero.x * 100}%`, top: `${hero.y * 100}%`, transform: `translate(-50%, -100%) ${hero.direction === 'side' && hero.facesLeft ? 'scaleX(-1)' : ''}` }} />
+      <img src={imageForDirection} alt={showWateringImage ? 'Герой поливает пустыню' : 'Герой озеленяет пустыню'} draggable={false} className="pointer-events-none absolute z-10 h-[min(26vh,180px)] w-auto object-contain drop-shadow-xl transition-[left,top] duration-700 ease-out" style={{ left: `${hero.x * 100}%`, top: `${hero.y * 100}%`, transform: `translate(-50%, -100%) ${hero.facesLeft && (showWateringImage || direction === 'side') ? 'scaleX(-1)' : ''}` }} />
       <div className="pointer-events-none absolute bottom-2 left-1/2 max-w-[90%] -translate-x-1/2 rounded-2xl bg-slate-950/70 px-4 py-2 text-center text-xs font-bold text-white sm:text-sm" role="status">{message}</div>
     </div>
 
