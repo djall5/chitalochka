@@ -10,7 +10,9 @@ type Props = {
 
 export function StudentPortalDashboard({ student, onStart, availablePoints }: Props) {
   const totalPoints = student.attempts.reduce((sum, attempt) => sum + attempt.points, 0);
-  const completed = new Set(student.attempts.map(attempt => attempt.lessonId));
+  const lessonAttempts = student.attempts.filter(attempt => attempt.source !== 'teacher');
+  const teacherPoints = totalPoints - lessonAttempts.reduce((sum, attempt) => sum + attempt.points, 0);
+  const completed = new Set(lessonAttempts.map(attempt => attempt.lessonId));
 
   return <div className="w-full max-w-5xl px-1 pb-8">
     <div className="mx-auto mb-7 max-w-2xl text-center">
@@ -20,7 +22,7 @@ export function StudentPortalDashboard({ student, onStart, availablePoints }: Pr
       <p className="mt-2 text-sm font-semibold text-slate-500">Здесь собраны твои занятия и успехи.</p>
       <div className="mt-4 flex flex-wrap justify-center gap-2">
         <span className="inline-flex items-center gap-1.5 rounded-xl bg-amber-50 px-4 py-2 text-xs font-black text-amber-700"><Star className="h-4 w-4 fill-current" />{availablePoints === null ? '…' : availablePoints} баллов для пустыни</span>
-        <span className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-50 px-4 py-2 text-xs font-black text-emerald-700"><Trophy className="h-4 w-4" />{student.attempts.length} занятий завершено</span>
+        <span className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-50 px-4 py-2 text-xs font-black text-emerald-700"><Trophy className="h-4 w-4" />{lessonAttempts.length} занятий завершено</span>
       </div>
     </div>
     <h2 className="mb-3 flex items-center gap-2 text-lg font-black text-slate-800"><BookOpen className="h-5 w-5 text-pink-500" />Мои занятия</h2>
@@ -33,6 +35,6 @@ export function StudentPortalDashboard({ student, onStart, availablePoints }: Pr
         <button onClick={() => onStart(lesson)} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-pink-500 to-purple-600 px-4 py-3 text-xs font-black text-white shadow transition hover:brightness-105"><Play className="h-4 w-4 fill-current" />{completed.has(lesson.id) ? 'Повторить занятие' : 'Начать занятие'}</button>
       </article>;
     })}</div> : <div className="rounded-3xl border-2 border-dashed border-pink-200 bg-white/80 p-8 text-center"><div className="text-3xl">🌱</div><p className="mt-2 text-sm font-black text-slate-700">Пока нет занятий</p><p className="mt-1 text-xs font-semibold text-slate-500">Попроси учителя добавить урок в твою карточку.</p></div>}
-    <p className="mt-5 text-center text-[10px] font-semibold text-slate-400">За все занятия заработано {totalPoints} баллов. Доступный остаток уменьшается после покупок в пустыне.</p>
+    <p className="mt-5 text-center text-[10px] font-semibold text-slate-400">За занятия заработано {totalPoints - teacherPoints} баллов{teacherPoints > 0 ? `, учитель добавил ${teacherPoints}` : ''}. Доступный остаток уменьшается после покупок в пустыне.</p>
   </div>;
 }

@@ -11,6 +11,7 @@ export interface LessonAttempt {
   lessonTitle: string;
   points: number;
   completedAt: string;
+  source?: 'teacher';
 }
 
 export type LearningProgressStatus = 'working' | 'mastered' | 'focus';
@@ -189,12 +190,18 @@ type Props = {
   character?: CharacterImages;
   onCharacterChange: (character: CharacterImages) => void;
   desertBalance: number | null;
+  onAwardPoints: (points: number) => Promise<void>;
   onOpenDesert: () => void;
 };
 
-export function StudentProfile({ studentId, name, attempts, lessons, games, learningProgress, teacherNotes, character, onCharacterChange, desertBalance, onOpenDesert, onNameChange, onLearningProgressChange, onTeacherNotesChange, onBack, onCreatePortalLink }: Props) {
+export function StudentProfile({ studentId, name, attempts, lessons, games, learningProgress, teacherNotes, character, onCharacterChange, desertBalance, onAwardPoints, onOpenDesert, onNameChange, onLearningProgressChange, onTeacherNotesChange, onBack, onCreatePortalLink }: Props) {
   const totalPoints = attempts.reduce((sum, attempt) => sum + attempt.points, 0);
-  const average = attempts.length ? Math.round(totalPoints / attempts.length) : 0;
+  const lessonAttempts = attempts.filter(attempt => attempt.source !== 'teacher');
+  const lessonPoints = lessonAttempts.reduce((sum, attempt) => sum + attempt.points, 0);
+  const average = lessonAttempts.length ? Math.round(lessonPoints / lessonAttempts.length) : 0;
+  const [awardAmount, setAwardAmount] = useState('');
+  const [awardBusy, setAwardBusy] = useState(false);
+  const [awardMessage, setAwardMessage] = useState('');
   const [portalUrl, setPortalUrl] = useState('');
   const [portalBusy, setPortalBusy] = useState(false);
   const [portalMessage, setPortalMessage] = useState('');
@@ -217,6 +224,23 @@ export function StudentProfile({ studentId, name, attempts, lessons, games, lear
     finally { setPortalBusy(false); }
   };
 
+  const awardPoints = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const points = Number(awardAmount);
+    if (!Number.isInteger(points) || points < 1 || points > 5000) {
+      setAwardMessage('Введите целое число от 1 до 5000.');
+      return;
+    }
+    setAwardBusy(true);
+    setAwardMessage('');
+    try {
+      await onAwardPoints(points);
+      setAwardAmount('');
+      setAwardMessage(`Начислено ${points} баллов.`);
+    } catch (error) { setAwardMessage(error instanceof Error ? error.message : 'Не удалось начислить баллы.'); }
+    finally { setAwardBusy(false); }
+  };
+
   const cycleLetterStatus = (letter: string) => {
     const currentStatus = progress.letters.find(item => item.value === letter)?.status || null;
     const nextStatus = statusCycle[(statusCycle.indexOf(currentStatus) + 1) % statusCycle.length];
@@ -229,8 +253,9 @@ export function StudentProfile({ studentId, name, attempts, lessons, games, lear
       <div className="flex flex-wrap items-center gap-4"><div className="grid h-20 w-20 place-items-center rounded-3xl bg-gradient-to-br from-pink-100 to-violet-100 text-4xl">🧒</div><div className="min-w-[200px] flex-1"><label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Имя ученика</label><input value={name} onChange={event => onNameChange(event.target.value)} className="mt-1 w-full max-w-sm rounded-xl border border-pink-200 px-3 py-2 text-lg font-black text-slate-800 outline-none focus:border-pink-500" placeholder="Имя ученика" /></div><div className="rounded-2xl bg-amber-50 px-5 py-3 text-center"><div className="flex items-center justify-center gap-2 text-2xl font-black text-amber-600"><Star className="h-5 w-5 fill-current" />{totalPoints}</div><div className="text-[10px] font-black text-amber-700">баллов всего</div></div></div>
       <div className="mt-5 rounded-2xl border border-violet-100 bg-violet-50/60 p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="flex items-center gap-2 text-sm font-black text-slate-800"><Link2 className="h-4 w-4 text-violet-600" />Кабинет ученика</h2><p className="mt-1 text-xs font-medium text-slate-500">Создайте ссылку, чтобы ученик видел свои занятия и результаты.</p></div><button disabled={portalBusy} onClick={() => void createPortalLink()} className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-xs font-black text-white disabled:opacity-50"><Copy className="h-4 w-4" />{portalBusy ? 'Создаём…' : 'Создать ссылку'}</button></div>{portalUrl && <input readOnly value={portalUrl} onFocus={event => event.currentTarget.select()} className="mt-3 w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs font-medium text-slate-600" aria-label="Ссылка кабинета ученика" />}{portalMessage && <p role="status" className="mt-2 flex items-center gap-1 text-xs font-bold text-violet-700">{portalMessage.includes('скопирована') && <Check className="h-3.5 w-3.5" />}{portalMessage}</p>}{portalUrl && <p className="mt-2 text-[10px] font-semibold text-slate-400">Создание новой ссылки отключит предыдущую.</p>}</div>
       <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-base font-black text-emerald-900">🌍 Пустыня {name}</h2><p className="mt-1 text-xs font-bold text-emerald-800">Доступно для покупок: ⭐ {desertBalance === null ? 'загружаем…' : desertBalance}</p></div><button onClick={onOpenDesert} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-black text-white">Открыть пустыню</button></div></div>
+      <form onSubmit={event => void awardPoints(event)} className="mt-3 flex flex-wrap items-end gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4"><div className="min-w-[180px] flex-1"><label htmlFor="teacher-award-points" className="text-xs font-black text-amber-900">Добавить баллы ученику</label><p className="mt-1 text-[11px] font-medium text-amber-800">Баллы сразу пополнят его запас для пустыни.</p></div><input id="teacher-award-points" type="number" min="1" max="5000" step="1" required value={awardAmount} onChange={event => setAwardAmount(event.target.value)} placeholder="Например, 50" className="w-32 rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm font-bold text-slate-800 outline-none focus:border-amber-500" /><button type="submit" disabled={awardBusy} className="rounded-xl bg-amber-500 px-4 py-2 text-xs font-black text-amber-950 disabled:opacity-50">{awardBusy ? 'Начисляем…' : 'Начислить'}</button>{awardMessage && <p role="status" className="w-full text-xs font-bold text-amber-900">{awardMessage}</p>}</form>
       <CharacterEditor character={character} onChange={onCharacterChange} />
-      <div className="mt-5 grid gap-3 sm:grid-cols-3"><Stat icon={<BookOpen className="h-5 w-5" />} label="Уроков пройдено" value={attempts.length} /><Stat icon={<Award className="h-5 w-5" />} label="Баллов за урок в среднем" value={average} /><Stat icon={<Trophy className="h-5 w-5" />} label="Лучший результат" value={attempts.length ? Math.max(...attempts.map(attempt => attempt.points)) : 0} /></div>
+      <div className="mt-5 grid gap-3 sm:grid-cols-3"><Stat icon={<BookOpen className="h-5 w-5" />} label="Уроков пройдено" value={lessonAttempts.length} /><Stat icon={<Award className="h-5 w-5" />} label="Баллов за урок в среднем" value={average} /><Stat icon={<Trophy className="h-5 w-5" />} label="Лучший результат" value={lessonAttempts.length ? Math.max(...lessonAttempts.map(attempt => attempt.points)) : 0} /></div>
 
       <section className="mt-7 rounded-2xl border border-sky-100 bg-sky-50/50 p-4 md:p-5">
         <div className="inline-flex rounded-xl border border-sky-100 bg-white p-1 text-xs font-black">
@@ -242,7 +267,7 @@ export function StudentProfile({ studentId, name, attempts, lessons, games, lear
         </> : <div className="mt-4 rounded-2xl border border-violet-100 bg-white p-4"><h2 className="flex items-center gap-2 text-base font-black text-slate-800"><BookOpen className="h-4 w-4 text-violet-600" />Заметки учителя</h2><p className="mt-1 text-xs font-medium text-slate-500">Запишите слоги, слова и задачи, которые нужно взять в работу с учеником.</p><textarea value={teacherNotes} onChange={event => onTeacherNotesChange(event.target.value)} rows={8} placeholder={'Например:\n• Слоги: ША, ШО, ШУ\n• Слова: шапка, машина\n• Отработать звук [Ш] в начале слова'} className="mt-4 w-full resize-y rounded-xl border border-violet-200 bg-violet-50/30 px-3 py-3 text-sm font-medium text-slate-700 outline-none placeholder:text-slate-400 focus:border-violet-500" aria-label="Заметки учителя" /><p className="mt-2 text-[10px] font-semibold text-slate-400">Заметка сохраняется в карточке ученика.</p></div>}
       </section>
 
-      <div className="mt-7"><h2 className="mb-3 text-base font-black text-slate-800">История занятий</h2>{attempts.length ? <div className="space-y-2">{[...attempts].reverse().map((attempt, index) => <article key={attempt.id} className="flex flex-wrap items-center gap-3 rounded-2xl border border-pink-100 bg-white p-3"><div className="grid h-10 w-10 place-items-center rounded-xl bg-pink-50 text-lg">{index === 0 ? '🏅' : '📖'}</div><div className="min-w-0 flex-1"><h3 className="truncate text-xs font-black text-slate-800">{attempt.lessonTitle}</h3><p className="mt-1 text-[10px] font-semibold text-slate-400">{new Date(attempt.completedAt).toLocaleString('ru-RU', { dateStyle: 'medium', timeStyle: 'short' })}</p></div><div className="rounded-xl bg-amber-50 px-3 py-2 text-xs font-black text-amber-700">⭐ {attempt.points} баллов</div></article>)}</div> : <div className="rounded-2xl border-2 border-dashed border-pink-200 bg-pink-50/50 p-8 text-center"><div className="text-3xl">🌱</div><p className="mt-2 text-sm font-black text-slate-700">Пока нет завершённых уроков</p><p className="mt-1 text-xs font-semibold text-slate-500">Когда ученик завершит занятие, здесь появятся его результат и отработанный материал.</p></div>}</div>
+      <div className="mt-7"><h2 className="mb-3 text-base font-black text-slate-800">История баллов</h2>{attempts.length ? <div className="space-y-2">{[...attempts].reverse().map((attempt, index) => <article key={attempt.id} className="flex flex-wrap items-center gap-3 rounded-2xl border border-pink-100 bg-white p-3"><div className="grid h-10 w-10 place-items-center rounded-xl bg-pink-50 text-lg">{attempt.source === 'teacher' ? '⭐' : index === 0 ? '🏅' : '📖'}</div><div className="min-w-0 flex-1"><h3 className="truncate text-xs font-black text-slate-800">{attempt.lessonTitle}</h3><p className="mt-1 text-[10px] font-semibold text-slate-400">{new Date(attempt.completedAt).toLocaleString('ru-RU', { dateStyle: 'medium', timeStyle: 'short' })}</p></div><div className="rounded-xl bg-amber-50 px-3 py-2 text-xs font-black text-amber-700">⭐ {attempt.points} баллов</div></article>)}</div> : <div className="rounded-2xl border-2 border-dashed border-pink-200 bg-pink-50/50 p-8 text-center"><div className="text-3xl">🌱</div><p className="mt-2 text-sm font-black text-slate-700">Пока нет начислений</p><p className="mt-1 text-xs font-semibold text-slate-500">Баллы появятся после урока или начисления учителем.</p></div>}</div>
     </section>
   </div>;
 }
