@@ -50,7 +50,7 @@ function countWord(count: number, one: string, few: string, many: string) {
 function makeBrushPaths(width: number, height: number) {
   const cellPixelWidth = width / DESERT_COLS;
   const cellPixelHeight = height * (1 - DESERT_GROUND_TOP) / DESERT_ROWS;
-  const radius = Math.hypot(cellPixelWidth / 2, cellPixelHeight / 2) * 1.15;
+  const radius = Math.hypot(cellPixelWidth / 2, cellPixelHeight / 2) * 2.3;
   const radiusX = radius * sceneWidth / width;
   const radiusY = radius * sceneHeight / height;
   return Array.from({ length: DESERT_CELL_COUNT }, (_, index) => {
