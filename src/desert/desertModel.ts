@@ -6,13 +6,17 @@ export const DESERT_CELL_COUNT = DESERT_COLS * DESERT_ROWS;
 export const DESERT_CATALOG = [
   { id: 'water', name: 'Вода', price: 20, amount: 4, category: 'water' },
   { id: 'flower', name: 'Цветы', price: 20, category: 'plants' },
+  { id: 'purpleFlower', name: 'Сиреневые цветы', price: 25, category: 'plants' },
   { id: 'bush', name: 'Кустарник', price: 35, category: 'plants' },
   { id: 'tree', name: 'Дерево', price: 70, category: 'plants' },
+  { id: 'willow', name: 'Ива', price: 85, category: 'plants' },
   { id: 'mushroom', name: 'Грибы', price: 25, category: 'life' },
   { id: 'butterfly', name: 'Бабочка', price: 35, category: 'life' },
   { id: 'bee', name: 'Пчела', price: 35, category: 'life' },
   { id: 'rabbit', name: 'Кролик', price: 60, category: 'life' },
+  { id: 'hedgehog', name: 'Ёжик', price: 45, category: 'life' },
   { id: 'bird', name: 'Птица', price: 50, category: 'life' },
+  { id: 'ladybug', name: 'Божья коровка', price: 25, category: 'life' },
 ] as const;
 
 export type DesertItemId = typeof DESERT_CATALOG[number]['id'];

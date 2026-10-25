@@ -101,8 +101,10 @@ begin
 
   if p_action ->> 'type' = 'buy' then
     v_item := p_action ->> 'itemId';
-    v_price := case v_item when 'water' then 20 when 'flower' then 20 when 'bush' then 35 when 'tree' then 70
-      when 'mushroom' then 25 when 'butterfly' then 35 when 'bee' then 35 when 'rabbit' then 60 when 'bird' then 50 else null end;
+    v_price := case v_item when 'water' then 20 when 'flower' then 20 when 'purpleFlower' then 25
+      when 'bush' then 35 when 'tree' then 70 when 'willow' then 85
+      when 'mushroom' then 25 when 'butterfly' then 35 when 'bee' then 35
+      when 'rabbit' then 60 when 'hedgehog' then 45 when 'bird' then 50 when 'ladybug' then 25 else null end;
     if v_price is null then raise exception 'Неизвестный предмет.'; end if;
     if coalesce(p_action ->> 'quantity', '1') !~ '^([1-9]|1[0-9]|20)$' then raise exception 'Выбери от 1 до 20 предметов.'; end if;
     v_quantity := coalesce((p_action ->> 'quantity')::integer, 1);
@@ -132,7 +134,7 @@ begin
     if v_changed = 0 then raise exception 'Нет воды или участок уже зелёный.'; end if;
   elsif p_action ->> 'type' = 'place' then
     v_item := p_action ->> 'itemId';
-    if v_item not in ('flower','bush','tree','mushroom','butterfly','bee','rabbit','bird') then raise exception 'Неизвестный предмет.'; end if;
+    if v_item not in ('flower','purpleFlower','bush','tree','willow','mushroom','butterfly','bee','rabbit','hedgehog','bird','ladybug') then raise exception 'Неизвестный предмет.'; end if;
     if coalesce((v_inventory ->> v_item)::integer, 0) < 1 then raise exception 'Предмет не куплен.'; end if;
     if (p_action ->> 'x') !~ '^(0(\.[0-9]+)?|1(\.0+)?)$' or (p_action ->> 'y') !~ '^(0(\.[0-9]+)?|1(\.0+)?)$' then raise exception 'Некорректное место.'; end if;
     v_x := (p_action ->> 'x')::numeric;
