@@ -14,6 +14,17 @@ type Props = {
 };
 
 const assets = { sand: 'desert/sand.png', soil: 'desert/soil.png', sprouts: 'desert/sprouts.png', green: 'desert/green.png' };
+const itemSprites: Partial<Record<DesertItemId, { file: string; width: number }>> = {
+  flower: { file: 'flower.png', width: 68 },
+  bush: { file: 'bush.png', width: 88 },
+  tree: { file: 'tree.png', width: 128 },
+  mushroom: { file: 'mushroom.png', width: 64 },
+  butterfly: { file: 'butterfly.png', width: 56 },
+  bee: { file: 'bee.png', width: 50 },
+  rabbit: { file: 'rabbit.png', width: 72 },
+  bird: { file: 'bird.png', width: 60 },
+};
+const itemSpriteUrl = (file: string) => `${import.meta.env.BASE_URL}desert/items/${file}`;
 const sampleCharacter = `${import.meta.env.BASE_URL}characters/sample-boy/`;
 const sceneWidth = 1200;
 const sceneHeight = 675;
@@ -189,13 +200,14 @@ export function DesertGame({ studentName, earned, desert, character, onAction, o
       </svg>
       {world.objects.map(object => {
         const item = DESERT_CATALOG.find(entry => entry.id === object.itemId);
-        return item && <span key={object.id} className="pointer-events-none absolute -translate-x-1/2 -translate-y-full text-3xl drop-shadow-lg sm:text-5xl" style={{ left: `${object.x * 100}%`, top: `${object.y * 100}%` }} title={item.name} aria-label={item.name}>{item.icon}</span>;
+        const sprite = itemSprites[object.itemId];
+        return item && sprite && <img key={object.id} src={itemSpriteUrl(sprite.file)} alt={item.name} draggable={false} className="pointer-events-none absolute -translate-x-1/2 -translate-y-full object-contain drop-shadow-lg" style={{ left: `${object.x * 100}%`, top: `${object.y * 100}%`, width: `clamp(38px, ${(sprite.width / sceneWidth * 100).toFixed(1)}vw, ${sprite.width}px)` }} />;
       })}
       <img src={imageForDirection} alt="Герой озеленяет пустыню" draggable={false} className="pointer-events-none absolute z-10 h-[min(26vh,180px)] w-auto object-contain drop-shadow-xl transition-[left,top] duration-700 ease-out" style={{ left: `${hero.x * 100}%`, top: `${hero.y * 100}%`, transform: `translate(-50%, -100%) ${hero.direction === 'side' && hero.facesLeft ? 'scaleX(-1)' : ''}` }} />
       <div className="pointer-events-none absolute bottom-2 left-1/2 max-w-[90%] -translate-x-1/2 rounded-2xl bg-slate-950/70 px-4 py-2 text-center text-xs font-bold text-white sm:text-sm" role="status">{message}</div>
     </div>
 
-    <footer className="z-10 flex items-center justify-between gap-2 bg-[#153b3b] px-3 py-2 sm:px-5"><div className="min-w-0 text-xs font-bold sm:text-sm">{selectedItem.icon} {selectedItem.name} {selected === 'water' ? `· в лейке ${world.water}` : `· в рюкзаке ${inventoryCount}`}</div><div className="flex gap-2"><button onClick={() => setSelected('water')} className={`rounded-xl px-3 py-2 text-xs font-black ${selected === 'water' ? 'bg-sky-500' : 'bg-white/15'}`}><Droplets size={16} className="inline" /> Поливать</button><button onClick={() => setShopOpen(true)} className="rounded-xl bg-amber-400 px-3 py-2 text-xs font-black text-amber-950"><ShoppingBag size={16} className="inline" /> Магазин</button></div></footer>
+    <footer className="z-10 flex items-center justify-between gap-2 bg-[#153b3b] px-3 py-2 sm:px-5"><div className="flex min-w-0 items-center gap-1 text-xs font-bold sm:text-sm">{selected === 'water' ? <Droplets size={18} className="shrink-0 text-sky-300" /> : <img src={itemSpriteUrl(itemSprites[selected]!.file)} alt="" className="h-7 w-7 shrink-0 object-contain" />}<span>{selectedItem.name} {selected === 'water' ? `· в лейке ${world.water}` : `· в рюкзаке ${inventoryCount}`}</span></div><div className="flex gap-2"><button onClick={() => setSelected('water')} className={`rounded-xl px-3 py-2 text-xs font-black ${selected === 'water' ? 'bg-sky-500' : 'bg-white/15'}`}><Droplets size={16} className="inline" /> Поливать</button><button onClick={() => setShopOpen(true)} className="rounded-xl bg-amber-400 px-3 py-2 text-xs font-black text-amber-950"><ShoppingBag size={16} className="inline" /> Магазин</button></div></footer>
 
     {shopOpen && <div className="absolute inset-0 z-20 flex items-end justify-center bg-slate-950/60 p-2 sm:items-center" onPointerDown={event => event.stopPropagation()}>
       <section className="max-h-[86dvh] w-full max-w-3xl overflow-y-auto rounded-3xl bg-white p-4 text-slate-800 shadow-2xl sm:p-6" aria-label="Магазин пустыни">
@@ -207,7 +219,7 @@ export function DesertGame({ studentName, earned, desert, character, onAction, o
           <p className="w-full text-xs font-black text-sky-900">Итого: {waterQuantity * 4} {countWord(waterQuantity * 4, 'полив', 'полива', 'поливов')} за ⭐ {waterQuantity * 20}</p>
         </div>
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">{DESERT_CATALOG.map(item => <div key={item.id} className="rounded-2xl border-2 border-emerald-100 bg-emerald-50 p-3 text-center">
-          <div className="text-4xl" aria-hidden="true">{item.icon}</div><div className="mt-1 text-sm font-black">{item.name}</div>
+          <div className="flex h-20 items-center justify-center" aria-hidden="true">{item.id === 'water' ? <Droplets size={42} className="text-sky-500" /> : <img src={itemSpriteUrl(itemSprites[item.id]!.file)} alt="" loading="lazy" className="h-full w-full object-contain" />}</div><div className="mt-1 text-sm font-black">{item.name}</div>
           <div className="text-xs font-bold text-amber-700">⭐ {item.id === 'water' ? item.price * waterQuantity : item.price}{item.id === 'water' ? ` · ${item.amount * waterQuantity} ${countWord(item.amount * waterQuantity, 'полив', 'полива', 'поливов')}` : ''}</div>
           <button disabled={busy || balance < item.price * (item.id === 'water' ? waterQuantity : 1)} onClick={() => { setSelected(item.id); void commit({ type: 'buy', itemId: item.id, quantity: item.id === 'water' ? waterQuantity : 1 }); }} className="mt-2 w-full rounded-xl bg-emerald-600 px-2 py-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300">{item.id === 'water' ? `Купить ${waterQuantity} ${countWord(waterQuantity, 'набор', 'набора', 'наборов')}` : 'Купить'}</button>
           {item.id !== 'water' && (world.inventory[item.id] || 0) > 0 && <button onClick={() => { setSelected(item.id); setShopOpen(false); setMessage('Нажми на зелёный участок, чтобы разместить покупку.'); }} className="mt-1 w-full rounded-xl bg-white px-2 py-2 text-xs font-black text-emerald-700">Разместить · {world.inventory[item.id]}</button>}

@@ -4,15 +4,15 @@ export const DESERT_GROUND_TOP = 0.28;
 export const DESERT_CELL_COUNT = DESERT_COLS * DESERT_ROWS;
 
 export const DESERT_CATALOG = [
-  { id: 'water', name: 'Вода', icon: '💧', price: 20, amount: 4, category: 'water' },
-  { id: 'flower', name: 'Цветы', icon: '🌼', price: 20, category: 'plants' },
-  { id: 'bush', name: 'Кустарник', icon: '🌿', price: 35, category: 'plants' },
-  { id: 'tree', name: 'Дерево', icon: '🌳', price: 70, category: 'plants' },
-  { id: 'mushroom', name: 'Грибы', icon: '🍄', price: 25, category: 'life' },
-  { id: 'butterfly', name: 'Бабочка', icon: '🦋', price: 35, category: 'life' },
-  { id: 'bee', name: 'Пчела', icon: '🐝', price: 35, category: 'life' },
-  { id: 'rabbit', name: 'Кролик', icon: '🐇', price: 60, category: 'life' },
-  { id: 'bird', name: 'Птица', icon: '🐦', price: 50, category: 'life' },
+  { id: 'water', name: 'Вода', price: 20, amount: 4, category: 'water' },
+  { id: 'flower', name: 'Цветы', price: 20, category: 'plants' },
+  { id: 'bush', name: 'Кустарник', price: 35, category: 'plants' },
+  { id: 'tree', name: 'Дерево', price: 70, category: 'plants' },
+  { id: 'mushroom', name: 'Грибы', price: 25, category: 'life' },
+  { id: 'butterfly', name: 'Бабочка', price: 35, category: 'life' },
+  { id: 'bee', name: 'Пчела', price: 35, category: 'life' },
+  { id: 'rabbit', name: 'Кролик', price: 60, category: 'life' },
+  { id: 'bird', name: 'Птица', price: 50, category: 'life' },
 ] as const;
 
 export type DesertItemId = typeof DESERT_CATALOG[number]['id'];
