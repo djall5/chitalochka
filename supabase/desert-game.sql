@@ -1,4 +1,6 @@
 -- Persistent desert worlds. Run after schema.sql and student-portal.sql.
+begin;
+
 create table if not exists public.student_deserts (
   teacher_id uuid not null references public.teacher_workspaces(user_id) on delete cascade,
   student_id text not null,
@@ -9,6 +11,22 @@ create table if not exists public.student_deserts (
 
 alter table public.student_deserts enable row level security;
 revoke all on public.student_deserts from public, anon, authenticated;
+
+-- Merge each vertical pair of old plots. Keep the original array for recovery.
+update public.student_deserts as d
+set state = jsonb_set(
+  d.state || jsonb_build_object('cells96Backup', d.state -> 'cells'),
+  '{cells}',
+  (select jsonb_agg(
+    least(3,
+      greatest(0, coalesce((d.state -> 'cells' ->> ((r.row_index * 2) * 12 + c.col_index))::integer, 0)) +
+      greatest(0, coalesce((d.state -> 'cells' ->> ((r.row_index * 2 + 1) * 12 + c.col_index))::integer, 0))
+    ) order by r.row_index, c.col_index)
+   from generate_series(0, 3) as r(row_index)
+   cross join generate_series(0, 11) as c(col_index)),
+  true
+), updated_at = now()
+where jsonb_typeof(d.state -> 'cells') = 'array' and jsonb_array_length(d.state -> 'cells') = 96;
 
 create or replace function public.read_student_desert(p_student_id text default null, p_token_hash text default null)
 returns jsonb
@@ -38,7 +56,7 @@ begin
   from jsonb_array_elements(coalesce(v_record -> 'attempts', '[]'::jsonb)) as a(attempt)
   where attempt ->> 'points' ~ '^[0-9]{1,5}$';
   select state into v_state from public.student_deserts where teacher_id = v_teacher and student_id = v_student;
-  v_state := coalesce(v_state, jsonb_build_object('spent', 0, 'water', 0, 'cells', to_jsonb(array_fill(0, array[96])), 'inventory', '{}'::jsonb, 'objects', '[]'::jsonb));
+  v_state := coalesce(v_state, jsonb_build_object('spent', 0, 'water', 0, 'cells', to_jsonb(array_fill(0, array[48])), 'inventory', '{}'::jsonb, 'objects', '[]'::jsonb));
   return jsonb_build_object('desert', v_state, 'earned', v_earned);
 end;
 $$;
@@ -89,7 +107,7 @@ begin
   from jsonb_array_elements(coalesce(v_record -> 'attempts', '[]'::jsonb)) as a(attempt)
   where attempt ->> 'points' ~ '^[0-9]{1,5}$';
   insert into public.student_deserts(teacher_id, student_id, state)
-  values (v_teacher, v_student, jsonb_build_object('spent', 0, 'water', 0, 'cells', to_jsonb(array_fill(0, array[96])), 'inventory', '{}'::jsonb, 'objects', '[]'::jsonb))
+  values (v_teacher, v_student, jsonb_build_object('spent', 0, 'water', 0, 'cells', to_jsonb(array_fill(0, array[48])), 'inventory', '{}'::jsonb, 'objects', '[]'::jsonb))
   on conflict do nothing;
   select state into v_state from public.student_deserts where teacher_id = v_teacher and student_id = v_student for update;
   v_spent := coalesce((v_state ->> 'spent')::integer, 0);
@@ -97,7 +115,7 @@ begin
   v_cells := v_state -> 'cells';
   v_inventory := coalesce(v_state -> 'inventory', '{}'::jsonb);
   v_objects := coalesce(v_state -> 'objects', '[]'::jsonb);
-  if jsonb_typeof(v_cells) <> 'array' or jsonb_array_length(v_cells) <> 96 then raise exception 'Повреждён прогресс пустыни.'; end if;
+  if jsonb_typeof(v_cells) <> 'array' or jsonb_array_length(v_cells) <> 48 then raise exception 'Повреждён прогресс пустыни.'; end if;
 
   if p_action ->> 'type' = 'buy' then
     v_item := p_action ->> 'itemId';
@@ -117,11 +135,11 @@ begin
       v_inventory := jsonb_set(v_inventory, array[v_item], to_jsonb(v_amount), true);
     end if;
   elsif p_action ->> 'type' = 'water' then
-    if jsonb_typeof(p_action -> 'cells') <> 'array' or jsonb_array_length(p_action -> 'cells') > 96 then raise exception 'Некорректный полив.'; end if;
+    if jsonb_typeof(p_action -> 'cells') <> 'array' or jsonb_array_length(p_action -> 'cells') > 48 then raise exception 'Некорректный полив.'; end if;
     for entry in select value from jsonb_array_elements(p_action -> 'cells') loop
       if jsonb_typeof(entry) <> 'number' or entry::text !~ '^[0-9]{1,2}$' then raise exception 'Некорректный участок.'; end if;
       v_index := (entry::text)::integer;
-      if v_index < 0 or v_index >= 96 then raise exception 'Некорректный участок.'; end if;
+      if v_index < 0 or v_index >= 48 then raise exception 'Некорректный участок.'; end if;
       if v_index = any(v_seen) then continue; end if;
       v_seen := array_append(v_seen, v_index);
       v_stage := (v_cells ->> v_index)::integer;
@@ -140,7 +158,7 @@ begin
     v_x := (p_action ->> 'x')::numeric;
     v_y := (p_action ->> 'y')::numeric;
     if v_x >= 1 or v_y < 0.28 or v_y >= 1 then raise exception 'Выбери участок земли.'; end if;
-    v_index := least(7, floor((v_y - 0.28) / 0.72 * 8)::integer) * 12 + floor(v_x * 12)::integer;
+    v_index := least(3, floor((v_y - 0.28) / 0.72 * 4)::integer) * 12 + floor(v_x * 12)::integer;
     if (v_cells ->> v_index)::integer <> 3 then raise exception 'Разместить предмет можно только на зелёном участке.'; end if;
     v_id := p_action ->> 'id';
     if v_id is null or v_id !~ '^[a-f0-9-]{36}$' then raise exception 'Некорректный предмет.'; end if;
@@ -151,7 +169,7 @@ begin
   else raise exception 'Неизвестное действие.';
   end if;
 
-  v_state := jsonb_build_object('spent', v_spent, 'water', v_water, 'cells', v_cells, 'inventory', v_inventory, 'objects', v_objects);
+  v_state := v_state || jsonb_build_object('spent', v_spent, 'water', v_water, 'cells', v_cells, 'inventory', v_inventory, 'objects', v_objects);
   update public.student_deserts set state = v_state, updated_at = now() where teacher_id = v_teacher and student_id = v_student;
   return jsonb_build_object('desert', v_state, 'earned', v_earned);
 end;
@@ -161,3 +179,5 @@ revoke all on function public.read_student_desert(text, text) from public, anon;
 revoke all on function public.mutate_student_desert(jsonb, text, text) from public, anon;
 grant execute on function public.read_student_desert(text, text) to anon, authenticated;
 grant execute on function public.mutate_student_desert(jsonb, text, text) to anon, authenticated;
+
+commit;

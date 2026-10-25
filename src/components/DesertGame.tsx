@@ -49,7 +49,8 @@ function countWord(count: number, one: string, few: string, many: string) {
 // A stable, slightly uneven brush dab for each plot. Neighbouring dabs overlap into one painted area.
 function makeBrushPaths(width: number, height: number) {
   const cellPixelWidth = width / DESERT_COLS;
-  const cellPixelHeight = height * (1 - DESERT_GROUND_TOP) / DESERT_ROWS;
+  // Keep the physical brush radius from the 96-plot world after halving the plot count.
+  const cellPixelHeight = height * (1 - DESERT_GROUND_TOP) / 8;
   const radius = Math.hypot(cellPixelWidth / 2, cellPixelHeight / 2) * 2.3;
   const radiusX = radius * sceneWidth / width;
   const radiusY = radius * sceneHeight / height;

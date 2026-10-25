@@ -1,5 +1,5 @@
 export const DESERT_COLS = 12;
-export const DESERT_ROWS = 8;
+export const DESERT_ROWS = 4;
 export const DESERT_GROUND_TOP = 0.28;
 export const DESERT_CELL_COUNT = DESERT_COLS * DESERT_ROWS;
 
@@ -42,9 +42,16 @@ export function normalizeDesert(value: unknown): DesertState {
   const empty = blankDesert();
   if (!value || typeof value !== 'object') return empty;
   const input = value as Partial<DesertState>;
+  const stage = (value: unknown) => typeof value === 'number' && Number.isInteger(value) ? Math.max(0, Math.min(3, value)) : 0;
   const cells = Array.isArray(input.cells) && input.cells.length === DESERT_CELL_COUNT
-    ? input.cells.map(stage => Number.isInteger(stage) ? Math.max(0, Math.min(3, stage)) : 0)
-    : empty.cells;
+    ? input.cells.map(stage)
+    : Array.isArray(input.cells) && input.cells.length === DESERT_CELL_COUNT * 2
+      ? Array.from({ length: DESERT_CELL_COUNT }, (_, index) => {
+        const row = Math.floor(index / DESERT_COLS);
+        const col = index % DESERT_COLS;
+        return Math.min(3, stage(input.cells![(row * 2) * DESERT_COLS + col]) + stage(input.cells![(row * 2 + 1) * DESERT_COLS + col]));
+      })
+      : empty.cells;
   const inventory: DesertState['inventory'] = {};
   for (const item of DESERT_CATALOG) {
     const count = input.inventory?.[item.id];
