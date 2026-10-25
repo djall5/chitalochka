@@ -112,6 +112,8 @@ export function useCloudWorkspace() {
   const [loadError, setLoadError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
   const userIdRef = useRef<string | null>(null);
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const saveVersionRef = useRef(0);
 
   useEffect(() => {
     if (!client) return;
@@ -183,8 +185,15 @@ export function useCloudWorkspace() {
 
   const refresh = useCallback(async () => {
     if (!client || !session?.user) return snapshot;
+    let pendingSave: Promise<void>;
+    do {
+      pendingSave = saveQueueRef.current;
+      await pendingSave.catch(() => {});
+    } while (pendingSave !== saveQueueRef.current);
+    const version = saveVersionRef.current;
     const { data, error } = await client.from('teacher_workspaces').select('data').eq('user_id', session.user.id).maybeSingle();
     if (error) throw error;
+    if (version !== saveVersionRef.current) return snapshot;
     const nextSnapshot = (data?.data as WorkspaceSnapshot | null) || null;
     if (JSON.stringify(nextSnapshot) !== JSON.stringify(snapshot)) setSnapshot(nextSnapshot);
     return nextSnapshot;
@@ -213,12 +222,18 @@ export function useCloudWorkspace() {
     },
     save: async (nextSnapshot) => {
       if (!client || !session?.user) return;
-      const { error } = await client.from('teacher_workspaces').upsert({
-        user_id: session.user.id,
-        data: nextSnapshot,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'user_id' });
-      if (error) throw error;
+      const userId = session.user.id;
+      saveVersionRef.current += 1;
+      const write = saveQueueRef.current.catch(() => {}).then(async () => {
+        const { error } = await client.from('teacher_workspaces').upsert({
+          user_id: userId,
+          data: nextSnapshot,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'user_id' });
+        if (error) throw error;
+      });
+      saveQueueRef.current = write;
+      await write;
     },
     refresh,
     reload: () => {

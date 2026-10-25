@@ -154,6 +154,10 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
   const lessonSurfaceRef = useRef<HTMLDivElement>(null);
   const activePointerId = useRef<number | null>(null);
   const cloudSnapshotRef = useRef(cloud.snapshot);
+  const localStudentEditVersionRef = useRef(0);
+  const savedStudentEditVersionRef = useRef(0);
+  const [cloudSaveState, setCloudSaveState] = useState<'saved' | 'saving' | 'error'>('saved');
+  const [saveRetryKey, setSaveRetryKey] = useState(0);
 
   const collaboration = useLessonRoom({
     onState: incoming => {
@@ -235,6 +239,8 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
   };
 
   const persistStudents = (next: StudentRecord[]) => {
+    localStudentEditVersionRef.current += 1;
+    setCloudSaveState('saving');
     setStudents(next);
     if (studentPortalToken) return;
     try { localStorage.setItem(STUDENTS_KEY, JSON.stringify(next)); } catch { showToast('Не удалось сохранить данные учеников'); }
@@ -242,6 +248,7 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
 
   useEffect(() => {
     if (studentPortalToken || !cloud.snapshot || cloud.snapshot === cloudSnapshotRef.current) return;
+    if (localStudentEditVersionRef.current !== savedStudentEditVersionRef.current) return;
     cloudSnapshotRef.current = cloud.snapshot;
     setStudents(cloud.snapshot.students);
     setGames(cloud.snapshot.games);
@@ -267,14 +274,22 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
   useEffect(() => {
     if (!cloud.session || !cloud.ready) return;
     const snapshot = { students, games, lesson, activeStudentId };
+    const editVersion = localStudentEditVersionRef.current;
+    let cancelled = false;
+    let retryTimer = 0;
     const timer = window.setTimeout(() => {
-      void cloud.save(snapshot).catch(error => {
+      void cloud.save(snapshot).then(() => {
+        savedStudentEditVersionRef.current = Math.max(savedStudentEditVersionRef.current, editVersion);
+        if (editVersion === localStudentEditVersionRef.current) setCloudSaveState('saved');
+      }).catch(error => {
+        if (cancelled || editVersion !== localStudentEditVersionRef.current) return;
         console.error('Не удалось сохранить данные в облако', error);
-        showToast('Не удалось сохранить в облако. Проверьте подключение.');
+        setCloudSaveState('error');
+        retryTimer = window.setTimeout(() => setSaveRetryKey(current => current + 1), 5000);
       });
     }, 500);
-    return () => window.clearTimeout(timer);
-  }, [students, games, lesson, activeStudentId, cloud.session?.user.id, cloud.ready]);
+    return () => { cancelled = true; window.clearTimeout(timer); window.clearTimeout(retryTimer); };
+  }, [students, games, lesson, activeStudentId, cloud.session?.user.id, cloud.ready, saveRetryKey]);
 
   useEffect(() => {
     if (studentPortalToken || collaboration.role !== 'teacher' || collaboration.status !== 'connected' || (screen !== 'play' && screen !== 'desert')) return;
@@ -630,7 +645,7 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
         {screen === 'student-select' && <StudentSelection students={students} onSelect={handleSelectStudent} onCreate={handleCreateStudent} />}
         {screen === 'student-portal' && activeStudent && <StudentPortalDashboard student={activeStudent} availablePoints={desertSnapshot?.studentId === activeStudent.id ? desertBalance(desertSnapshot.earned, desertSnapshot.desert) : null} onStart={item => handleOpenLesson(item, 'play')} />}
         {screen === 'library' && <TeacherWorkspace lessons={lessons} games={games} onNewLesson={handleNewLesson} onUseGameInLesson={handleUseGameInLesson} onOpenLesson={handleOpenLesson} onDeleteLesson={handleDeleteLesson} onCreateGame={handleCreateGame} onOpenStudent={() => setScreen('student')} studentName={studentName} onSwitchStudent={() => setScreen('student-select')} />}
-        {screen === 'student' && activeStudent && <StudentProfile studentId={activeStudent.id} name={studentName} attempts={studentAttempts} lessons={lessons} games={games} learningProgress={activeStudent.learningProgress} teacherNotes={activeStudent.teacherNotes || ''} onNameChange={handleStudentName} onLearningProgressChange={learningProgress => persistStudents(students.map(student => student.id === activeStudent.id ? { ...student, learningProgress } : student))} onTeacherNotesChange={teacherNotes => persistStudents(students.map(student => student.id === activeStudent.id ? { ...student, teacherNotes } : student))} onBack={() => setScreen('library')} onCreatePortalLink={createStudentPortalLink} character={activeStudent.character} onCharacterChange={character => persistStudents(students.map(student => student.id === activeStudent.id ? { ...student, character } : student))} desertBalance={desertSnapshot?.studentId === activeStudent.id ? desertBalance(desertSnapshot.earned, desertSnapshot.desert) : null} onAwardPoints={awardStudentPoints} onOpenDesert={() => void openDesert()} />}
+        {screen === 'student' && activeStudent && <StudentProfile studentId={activeStudent.id} name={studentName} attempts={studentAttempts} lessons={lessons} games={games} learningProgress={activeStudent.learningProgress} teacherNotes={activeStudent.teacherNotes || ''} saveState={cloudSaveState} onNameChange={handleStudentName} onLearningProgressChange={learningProgress => persistStudents(students.map(student => student.id === activeStudent.id ? { ...student, learningProgress } : student))} onTeacherNotesChange={teacherNotes => persistStudents(students.map(student => student.id === activeStudent.id ? { ...student, teacherNotes } : student))} onBack={() => setScreen('library')} onCreatePortalLink={createStudentPortalLink} character={activeStudent.character} onCharacterChange={character => persistStudents(students.map(student => student.id === activeStudent.id ? { ...student, character } : student))} desertBalance={desertSnapshot?.studentId === activeStudent.id ? desertBalance(desertSnapshot.earned, desertSnapshot.desert) : null} onAwardPoints={awardStudentPoints} onOpenDesert={() => void openDesert()} />}
         {screen === 'builder' && <LessonBuilder key={lesson.id} initialLesson={lesson} games={games} isEditing={builderEditing} onBack={() => setScreen('library')} onSave={handleSaveBuiltLesson} onPreview={handlePreviewBuiltLesson} />}
         {screen === 'edit' && <LessonEditor lesson={lesson} onSave={handleSaveLesson} onClose={() => setScreen('play')} activeStepTab={editorStartTab} />}
         {(screen === 'play' || screen === 'preview') && <div ref={lessonSurfaceRef} className="w-full max-w-[650px] bg-white/95 backdrop-blur-md rounded-3xl shadow-2xl border-2 border-pink-200 p-4 md:p-7 relative text-center">
