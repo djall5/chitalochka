@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Step6Config } from '../../types';
 import { playChime } from '../../utils/phonetics';
+import { syllabifyRussian } from '../../utils/syllabifyRussian';
 import { RotateCcw, ArrowLeft, Sparkles } from 'lucide-react';
 
 interface Props {
@@ -29,6 +30,13 @@ export const Step6ReadingCards: React.FC<Props> = ({ config, onPrev, onCorrectAn
 
   const totalCards = config.cards.length;
   const readCount = readCardIds.length;
+  const displayMode = config.displayMode || 'syllables';
+
+  const displayCardWord = (card: Step6Config['cards'][number]) => {
+    const source = (card.displayWord || card.speakWord || '').replace(/[\-‑]/g, '');
+    const shown = displayMode === 'syllables' ? syllabifyRussian(source) : source;
+    return shown.replace(/-/g, '‑');
+  };
 
   return (
     <div className="flex flex-col items-center w-full max-w-lg">
@@ -58,7 +66,7 @@ export const Step6ReadingCards: React.FC<Props> = ({ config, onPrev, onCorrectAn
       <div className="grid grid-cols-2 gap-3 w-full mb-4">
         {config.cards.map(card => {
           const isRead = readCardIds.includes(card.id);
-          const displayWord = card.displayWord.replace(/-/g, '‑');
+          const displayWord = displayCardWord(card);
           return (
             <button
               key={card.id}

@@ -81,6 +81,7 @@ export const defaultLessonY: LessonData = {
   step6: {
     title: '📖 6. Читаем слова!',
     instruction: 'Нажимайте на карточки со словами и читайте их вслух!',
+    displayMode: 'syllables',
     cards: [
       { id: 'c1', icon: '🌊', displayWord: 'РУ-ЧЕЙ', speakWord: 'ручей' },
       { id: 'c2', icon: '🦹', displayWord: 'ЗЛО-ДЕЙ', speakWord: 'злодей' },
@@ -173,6 +174,7 @@ export const defaultLessonS: LessonData = {
   step6: {
     title: '📖 6. Читаем слова со звуком [С]!',
     instruction: 'Нажимайте на карточки со словами и читайте их вслух!',
+    displayMode: 'syllables',
     cards: [
       { id: 'cs1', icon: '☀️', displayWord: 'СОЛН-ЦЕ', speakWord: 'солнце' },
       { id: 'cs2', icon: '✈️', displayWord: 'СА-МО-ЛЁТ', speakWord: 'самолёт' },

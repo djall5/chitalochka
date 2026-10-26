@@ -19,11 +19,12 @@ export function autoGenerateMazeGrid(
   targetLetter: string | string[]
 ): string[][] {
   const targetLetters = (Array.isArray(targetLetter) ? targetLetter : [targetLetter])
-    .map(letter => letter.trim().toUpperCase())
+    .map(letter => letter.trim())
     .filter(Boolean);
   const pathLetters = targetLetters.length > 0 ? targetLetters : ['А'];
   const distractors = ['А', 'О', 'У', 'Ы', 'Э', 'Я', 'Ё', 'Ю', 'И', 'Е', 'Б', 'В', 'Г', 'Д', 'Ж', 'З', 'К', 'Л', 'М', 'Н', 'П', 'Р', 'С', 'Т', 'Ф', 'Х', 'Ц', 'Ч', 'Ш', 'Щ'];
-  const filteredDistractors = distractors.filter(l => !pathLetters.includes(l));
+  const normalizedPathLetters = new Set(pathLetters.map(letter => letter.toLocaleUpperCase('ru-RU')));
+  const filteredDistractors = distractors.filter(letter => !normalizedPathLetters.has(letter));
   let pathIndex = 0;
   const nextPathLetter = () => {
     const letter = pathLetters[pathIndex % pathLetters.length];

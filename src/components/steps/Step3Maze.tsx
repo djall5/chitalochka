@@ -23,7 +23,7 @@ export const Step3Maze: React.FC<Props> = ({ config, onNext, onPrev, onCorrectAn
   const startRow = config.start?.row ?? 0;
   const startCol = config.start?.col ?? 0;
   const pathLetters = (config.targetLetters?.length ? config.targetLetters : [config.targetLetter])
-    .map(letter => letter.trim().toUpperCase())
+    .map(letter => letter.trim())
     .filter(Boolean);
   const expectedLetters = pathLetters.length > 0 ? pathLetters : ['А'];
   const letterLabel = expectedLetters.join(' — ');
@@ -81,7 +81,7 @@ export const Step3Maze: React.FC<Props> = ({ config, onNext, onPrev, onCorrectAn
     }
 
     const nonTargetLetters = selectedPath.filter(
-      (p, index) => p.letter.toUpperCase() !== expectedLetters[index % expectedLetters.length]
+      (p, index) => p.letter.toLocaleUpperCase('ru-RU') !== expectedLetters[index % expectedLetters.length].toLocaleUpperCase('ru-RU')
     );
 
     if (nonTargetLetters.length > 0) {

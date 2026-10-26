@@ -62,15 +62,20 @@ export interface Step5Config {
 export interface ReadingCardItem {
   id: string;
   icon: string;
-  displayWord: string; // e.g. "РУ-ЧЕЙ"
-  speakWord: string;   // e.g. "ручей"
-  showSyllables?: boolean;
+  /** The original word as entered by the teacher. */
+  displayWord: string;
+  /** Kept separately for older lessons and assistive technologies. */
+  speakWord: string;
 }
+
+export type ReadingCardsDisplayMode = 'whole' | 'syllables';
 
 export interface Step6Config {
   title: string;
   instruction: string;
   cards: ReadingCardItem[];
+  /** One display choice applies to every card in the exercise. */
+  displayMode?: ReadingCardsDisplayMode;
 }
 
 export interface Step7Config {
@@ -129,6 +134,8 @@ export interface LessonData {
   subtitle: string;
   /** Lesson assembled quietly from the game library before the teacher names it. */
   isDraft?: boolean;
+  /** A teacher-selected status. Missing means the status is calculated from attempts. */
+  manualStatus?: LessonStatus;
   themeColor: string; // e.g. "#ec4899"
   bgGradient: string;
   targetLetter?: string;
@@ -147,3 +154,5 @@ export interface LessonData {
   step9: Step9Config;
   step10: Step10Config;
 }
+
+export type LessonStatus = 'in-progress' | 'completed' | 'repeat';

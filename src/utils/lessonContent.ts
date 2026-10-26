@@ -2,6 +2,8 @@ import { syllabifyRussian } from './syllabifyRussian';
 
 const VOWELS = new Set([...'АЕЁИОУЫЭЮЯ']);
 const softeningLetters = new Set([...'ЕЁИЮЯЬ']);
+const ALWAYS_SOFT_CONSONANTS = new Set([...'ЙЧЩ']);
+const ALWAYS_HARD_CONSONANTS = new Set([...'ЖШЦ']);
 
 const emojiByWord: Array<[RegExp, string]> = [
   [/кот|кошка/i, '🐱'], [/собак|щен/i, '🐶'], [/мыш/i, '🐭'], [/рыб/i, '🐟'],
@@ -63,6 +65,20 @@ export function phonemeColor(value: string) {
   const first = letters[0] || '';
   const next = letters[1] || '';
   if (first && !VOWELS.has(first) && softeningLetters.has(next)) return 'text-emerald-600';
+  return 'text-sky-600';
+}
+
+/** Colour one visible character without changing the way the teacher wrote it. */
+export function phonemeCharacterColor(value: string, index: number) {
+  const characters = [...value];
+  const letter = (characters[index] || '').toLocaleUpperCase('ru-RU');
+  if (VOWELS.has(letter)) return 'text-red-600';
+  if (letter === 'Ь' || letter === 'Ъ') return 'text-slate-400';
+  if (!/[А-ЯЁ]/u.test(letter)) return 'text-slate-700';
+  const next = (characters[index + 1] || '').toLocaleUpperCase('ru-RU');
+  if (ALWAYS_SOFT_CONSONANTS.has(letter)) return 'text-emerald-600';
+  if (ALWAYS_HARD_CONSONANTS.has(letter)) return 'text-sky-600';
+  if (softeningLetters.has(next)) return 'text-emerald-600';
   return 'text-sky-600';
 }
 

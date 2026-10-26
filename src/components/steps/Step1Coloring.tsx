@@ -56,7 +56,7 @@ export const Step1Coloring: React.FC<Props> = ({ config, onNext, onCorrectAnswer
     config.cells.forEach((syllable, idx) => {
       const pId = paintedCells[idx];
       const pItem = config.palette.find(p => p.id === pId);
-      if (!pItem || pItem.syllable !== syllable) {
+      if (!pItem || pItem.syllable.toLocaleUpperCase('ru-RU') !== syllable.toLocaleUpperCase('ru-RU')) {
         errors++;
       }
     });

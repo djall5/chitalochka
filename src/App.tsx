@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Award, BookOpen, Check, Edit3, Library, LogOut, MousePointer2, Play, Volume2, VolumeX } from 'lucide-react';
-import { LessonData } from './types';
+import { LessonData, LessonStatus } from './types';
 import { defaultLessonY } from './defaultLessons';
 import { Step1Coloring } from './components/steps/Step1Coloring';
 import { Step2Falling } from './components/steps/Step2Falling';
@@ -381,6 +381,20 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
       : student));
   };
 
+  const getLessonStatus = (item: LessonData): LessonStatus => {
+    if (item.manualStatus) return item.manualStatus;
+    return studentAttempts.some(attempt => attempt.lessonId === item.id) ? 'completed' : 'in-progress';
+  };
+
+  const handleLessonStatusChange = (lessonId: string, status?: LessonStatus) => {
+    updateActiveStudentLessons(lessons.map(item => {
+      if (item.id !== lessonId) return item;
+      if (status) return { ...item, manualStatus: status };
+      const { manualStatus: _manualStatus, ...automaticLesson } = item;
+      return automaticLesson;
+    }));
+  };
+
   const handleSaveLesson = (updated: LessonData) => {
     const savedLesson = { ...updated, isDraft: updated.isDraft && !updated.title.trim() };
     setLesson(savedLesson);
@@ -643,7 +657,7 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
         {screen === 'play' && !studentPortalToken && <ClassroomPanel configured={collaboration.configured} roomId={collaboration.roomId} role={collaboration.role} status={collaboration.status} statusMessage={collaboration.statusMessage} members={collaboration.members} lastAction={collaboration.lastAction} onCreate={createClassroom} onJoin={collaboration.join} onLeave={collaboration.leave} />}
         {screen === 'student-select' && <StudentSelection students={students} onSelect={handleSelectStudent} onCreate={handleCreateStudent} />}
         {screen === 'student-portal' && activeStudent && <StudentPortalDashboard student={activeStudent} availablePoints={desertSnapshot?.studentId === activeStudent.id ? desertBalance(desertSnapshot.earned, desertSnapshot.desert) : null} onStart={item => handleOpenLesson(item, 'play')} />}
-        {screen === 'library' && <TeacherWorkspace lessons={lessons} games={games} onNewLesson={handleNewLesson} onUseGameInLesson={handleUseGameInLesson} onOpenLesson={handleOpenLesson} onDeleteLesson={handleDeleteLesson} onCreateGame={handleCreateGame} onOpenStudent={() => setScreen('student')} studentName={studentName} onSwitchStudent={() => setScreen('student-select')} />}
+        {screen === 'library' && <TeacherWorkspace lessons={lessons} games={games} onNewLesson={handleNewLesson} onUseGameInLesson={handleUseGameInLesson} onOpenLesson={handleOpenLesson} onDeleteLesson={handleDeleteLesson} getLessonStatus={getLessonStatus} onLessonStatusChange={handleLessonStatusChange} onCreateGame={handleCreateGame} onOpenStudent={() => setScreen('student')} studentName={studentName} onSwitchStudent={() => setScreen('student-select')} />}
         {screen === 'student' && activeStudent && <StudentProfile studentId={activeStudent.id} name={studentName} attempts={studentAttempts} lessons={lessons} games={games} learningProgress={activeStudent.learningProgress} teacherNotes={activeStudent.teacherNotes || ''} saveState={cloudSaveState} onNameChange={handleStudentName} onLearningProgressChange={learningProgress => persistStudents(students.map(student => student.id === activeStudent.id ? { ...student, learningProgress } : student))} onTeacherNotesChange={teacherNotes => persistStudents(students.map(student => student.id === activeStudent.id ? { ...student, teacherNotes } : student))} onBack={() => setScreen('library')} onCreatePortalLink={createStudentPortalLink} character={activeStudent.character} onCharacterChange={character => persistStudents(students.map(student => student.id === activeStudent.id ? { ...student, character } : student))} desertBalance={desertSnapshot?.studentId === activeStudent.id ? desertBalance(desertSnapshot.earned, desertSnapshot.desert) : null} onAwardPoints={awardStudentPoints} onOpenDesert={() => void openDesert()} />}
         {screen === 'builder' && <LessonBuilder key={lesson.id} initialLesson={lesson} games={games} isEditing={builderEditing} onBack={() => setScreen('library')} onSave={handleSaveBuiltLesson} onPreview={handlePreviewBuiltLesson} />}
         {screen === 'edit' && <LessonEditor lesson={lesson} onSave={handleSaveLesson} onClose={() => setScreen('play')} activeStepTab={editorStartTab} />}

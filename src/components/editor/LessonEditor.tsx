@@ -177,7 +177,7 @@ export const LessonEditor: React.FC<Props> = ({
   const handleSyllablesStringChange = (val: string) => {
     const list = val
       .split(/[,;\s]+/)
-      .map(s => s.trim().toUpperCase())
+      .map(s => s.trim())
       .filter(Boolean);
     setData(prev => ({
       ...prev,
@@ -201,7 +201,7 @@ export const LessonEditor: React.FC<Props> = ({
   };
 
   const handleMazeCellEdit = (r: number, c: number, newLetter: string) => {
-    const char = newLetter.toUpperCase().slice(-1) || 'А';
+    const char = newLetter.slice(-1) || 'А';
     setData(prev => {
       const copy = prev.step3.cells.map(row => [...row]);
       if (copy[r] && copy[r][c] !== undefined) {
@@ -263,8 +263,8 @@ export const LessonEditor: React.FC<Props> = ({
     const newCard: ReadingCardItem = {
       id: `c_${Date.now()}`,
       icon: '⭐',
-      displayWord: 'НОВОЕ-СЛОВО',
-      speakWord: 'новое слово',
+      displayWord: 'Новое слово',
+      speakWord: 'Новое слово',
     };
     setData(prev => ({
       ...prev,
@@ -399,7 +399,7 @@ export const LessonEditor: React.FC<Props> = ({
                     maxLength={2}
                     value={data.targetLetter || 'Й'}
                     onChange={e =>
-                      setData({ ...data, targetLetter: e.target.value.toUpperCase() })
+                      setData({ ...data, targetLetter: e.target.value })
                     }
                     className="w-20 px-3 py-2 text-lg text-center bg-white rounded-xl border border-slate-200 focus:outline-hidden focus:border-pink-500 font-black text-pink-600"
                   />
@@ -561,7 +561,7 @@ export const LessonEditor: React.FC<Props> = ({
                         value={item.syllable}
                         onChange={e =>
                           handleUpdatePalette(idx, {
-                            syllable: e.target.value.toUpperCase(),
+                            syllable: e.target.value,
                           })
                         }
                         className="w-16 px-2 py-1 text-center font-black text-base rounded-lg border border-slate-300"
@@ -799,7 +799,7 @@ export const LessonEditor: React.FC<Props> = ({
                       ...data,
                       step3: {
                         ...data.step3,
-                        targetLetter: e.target.value.toUpperCase(),
+                        targetLetter: e.target.value,
                       },
                     })
                   }
@@ -982,7 +982,7 @@ export const LessonEditor: React.FC<Props> = ({
                       value={item.before}
                       onChange={e =>
                         handleUpdateWord(idx, {
-                          before: e.target.value.toUpperCase(),
+                          before: e.target.value,
                         })
                       }
                       placeholder="—"
@@ -999,7 +999,7 @@ export const LessonEditor: React.FC<Props> = ({
                       value={item.missing}
                       onChange={e =>
                         handleUpdateWord(idx, {
-                          missing: e.target.value.toUpperCase(),
+                          missing: e.target.value,
                         })
                       }
                       className="w-12 px-2 py-1 text-center font-black text-sm bg-pink-50 border border-pink-300 rounded-lg text-pink-700"
@@ -1014,7 +1014,7 @@ export const LessonEditor: React.FC<Props> = ({
                       value={item.after}
                       onChange={e =>
                         handleUpdateWord(idx, {
-                          after: e.target.value.toUpperCase(),
+                          after: e.target.value,
                         })
                       }
                       placeholder="—"
@@ -1030,7 +1030,7 @@ export const LessonEditor: React.FC<Props> = ({
                       value={item.fullWord}
                       onChange={e =>
                         handleUpdateWord(idx, {
-                          fullWord: e.target.value.toUpperCase(),
+                          fullWord: e.target.value,
                         })
                       }
                       className="w-full px-2 py-1 text-xs font-black text-indigo-900 bg-slate-50 rounded-lg border border-slate-200"
@@ -1078,6 +1078,13 @@ export const LessonEditor: React.FC<Props> = ({
               </button>
             </div>
 
+            <label className="block max-w-sm text-xs font-bold text-slate-600">Показывать все слова
+              <select value={data.step6.displayMode || 'syllables'} onChange={e => setData({ ...data, step6: { ...data.step6, displayMode: e.target.value as 'whole' | 'syllables' } })} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold">
+                <option value="syllables">По слогам</option>
+                <option value="whole">Целым словом</option>
+              </select>
+            </label>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {data.step6.cards.map((card, idx) => (
                 <div
@@ -1095,14 +1102,15 @@ export const LessonEditor: React.FC<Props> = ({
                     />
                     <div className="flex-1">
                       <label className="block text-[10px] font-bold text-slate-500">
-                        Отображение (слоги через дефис)
+                        Слово
                       </label>
                       <input
                         type="text"
-                        value={card.displayWord}
+                        value={card.displayWord || card.speakWord}
                         onChange={e =>
                           handleUpdateCard(idx, {
-                            displayWord: e.target.value.toUpperCase(),
+                            displayWord: e.target.value,
+                            speakWord: e.target.value,
                           })
                         }
                         className="w-full px-2 py-1 text-sm font-black text-slate-800 bg-slate-50 rounded-lg border border-slate-200"
