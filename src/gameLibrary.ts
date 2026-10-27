@@ -1,6 +1,6 @@
 import { LessonData, MemoryPair, ReadingCardItem, ReadingTextPage, Step7Config } from './types';
 
-export type GameStepKey = 'step1' | 'step2' | 'step3' | 'step4' | 'step5' | 'step6' | 'step7' | 'step8' | 'step9' | 'step10';
+export type GameStepKey = 'step1' | 'step2' | 'step3' | 'step4' | 'step5' | 'step6' | 'step7' | 'step8' | 'step9' | 'step10' | 'step11';
 
 export interface GameLibraryItem {
   id: string;
@@ -23,12 +23,13 @@ export const DEFAULT_GAME_LIBRARY: GameLibraryItem[] = [
   { id: 'build-house', title: 'Построй дом!', emoji: '🏠', category: 'Чтение', description: 'Читайте слова на кирпичиках и стройте из них дом.', stepKey: 'step8' },
   { id: 'memory', title: 'Мемори', emoji: '🃏', category: 'Память и чтение', description: 'Открывай карточки и находи пары букв, слогов или коротких слов с картинками.', stepKey: 'step9' },
   { id: 'fill-jar', title: 'Заполни банку', emoji: '🫙', category: 'Буквы и слова', description: 'Перетаскивай перемешанные буквы в банку, чтобы собрать слово.', stepKey: 'step10' },
+  { id: 'speed-syllables', title: 'Найди слог на время', emoji: '⚡', category: 'Слоги', description: 'Смотри на слог вверху и быстро находи его среди карточек.', stepKey: 'step11' },
 ];
 
 export const gameStepIndex = (key: GameStepKey) => Number(key.slice(4)) - 1;
 
 export const lessonGameOrder = (lesson: LessonData) =>
-  lesson.gameOrder?.length ? lesson.gameOrder : DEFAULT_GAME_LIBRARY.filter(game => !['step7', 'step8', 'step9', 'step10'].includes(game.stepKey)).map(game => game.id);
+  lesson.gameOrder?.length ? lesson.gameOrder : DEFAULT_GAME_LIBRARY.filter(game => !['step7', 'step8', 'step9', 'step10', 'step11'].includes(game.stepKey)).map(game => game.id);
 
 export const cloneLesson = (lesson: LessonData): LessonData => {
   const copy = JSON.parse(JSON.stringify(lesson)) as LessonData;
@@ -36,8 +37,12 @@ export const cloneLesson = (lesson: LessonData): LessonData => {
   if (!copy.step8) copy.step8 = { title: '🏠 Построй дом!', instruction: 'Прочитай слово вслух и нажми на кирпичик, чтобы поставить его в дом. Можно проверить чтение через микрофон.', words: ['ДОМ', 'ОКНО', 'КРЫША', 'СТЕНА', 'ДВЕРЬ', 'ТРУБА'] };
   if (!copy.step9) copy.step9 = { title: '🃏 Мемори', instruction: 'Открывай карточки по две и ищи одинаковые буквы или слоги.', mode: 'symbols', pairs: [{ id: 'memory-default-1', first: 'МА', second: 'МА' }, { id: 'memory-default-2', first: 'МО', second: 'МО' }, { id: 'memory-default-3', first: 'МУ', second: 'МУ' }, { id: 'memory-default-4', first: 'МЫ', second: 'МЫ' }] };
   if (!copy.step10) copy.step10 = { title: '🫙 Заполни банку', instruction: 'Найди нужную букву среди остальных и перетащи её в банку.', targetLetter: 'А', targetCount: 16 };
+  if (!copy.step11) copy.step11 = { title: '⚡ Найди слог на время!', instruction: 'Смотри на большой слог и быстро найди его среди карточек.', syllables: ['МА', 'МО', 'МУ', 'МИ'], timeLimit: 30, optionsPerRound: 4 };
   if (!copy.step6) copy.step6 = { title: '📖 Читаем слова!', instruction: 'Нажимайте на карточки со словами и читайте их вслух!', cards: [] };
   if (!Number.isFinite(copy.step10.targetCount)) copy.step10.targetCount = 16;
+  if (!Array.isArray(copy.step11.syllables)) copy.step11.syllables = [];
+  if (!Number.isFinite(copy.step11.timeLimit)) copy.step11.timeLimit = 30;
+  if (!Number.isFinite(copy.step11.optionsPerRound)) copy.step11.optionsPerRound = 4;
   if (!Array.isArray(copy.step9.pairs)) copy.step9.pairs = [];
   const legacyCards = copy.step6.cards as Array<ReadingCardItem & { showSyllables?: boolean }>;
   if (!copy.step6.displayMode) {

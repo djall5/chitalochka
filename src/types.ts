@@ -115,6 +115,17 @@ export interface Step10Config {
   targetLetters?: string[];
 }
 
+export interface Step11Config {
+  title: string;
+  instruction: string;
+  /** Every item becomes the large target syllable once. */
+  syllables: string[];
+  /** Total time for finding all target syllables. */
+  timeLimit: number;
+  /** Number of answer cards visible in one round. */
+  optionsPerRound: number;
+}
+
 export interface ReadingTextPage {
   id: string;
   imageDataUrl: string;
@@ -153,6 +164,7 @@ export interface LessonData {
   step8: Step8Config;
   step9: Step9Config;
   step10: Step10Config;
+  step11: Step11Config;
 }
 
 export type LessonStatus = 'in-progress' | 'completed' | 'repeat';

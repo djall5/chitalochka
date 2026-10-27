@@ -105,6 +105,9 @@ export function collectLessonLearningProgress(lesson: LessonData, games: Progres
     if (stepKey === 'step2') {
       addLetters(letters, String(step.practiceLetters ?? ''));
     }
+    if (stepKey === 'step11') {
+      (Array.isArray(step.syllables) ? step.syllables : []).forEach(item => addLetters(letters, String(item ?? '')));
+    }
     if (stepKey === 'step3' || stepKey === 'step10') {
       const targets = Array.isArray(step.targetLetters) ? step.targetLetters : [step.targetLetter];
       targets.forEach(item => addLetters(letters, String(item ?? '')));

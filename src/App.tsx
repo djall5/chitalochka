@@ -12,6 +12,7 @@ import { Step7TextReading } from './components/steps/Step7TextReading';
 import { Step8BuildHouse } from './components/steps/Step8BuildHouse';
 import { Step9Memory } from './components/steps/Step9Memory';
 import { Step10FillJar } from './components/steps/Step10FillJar';
+import { Step11SpeedSyllables } from './components/steps/Step11SpeedSyllables';
 import { LessonEditor } from './components/editor/LessonEditor';
 import { LessonBuilder, TeacherWorkspace } from './components/TeacherWorkspace';
 import { collectLessonLearningProgress, LessonAttempt, mergeLearningProgress, StudentProfile, StudentRecord } from './components/StudentProfile';
@@ -680,6 +681,7 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
             {currentGame?.stepKey === 'step8' && <Step8BuildHouse config={activeLesson.step8} onPrev={goPrevious} onNext={goNext} isLastGame={currentStep === orderedGames.length - 1} onCorrectAnswer={handleCorrectAnswer} />}
             {currentGame?.stepKey === 'step9' && <Step9Memory config={activeLesson.step9} onPrev={goPrevious} onNext={goNext} isLastGame={currentStep === orderedGames.length - 1} onCorrectAnswer={handleCorrectAnswer} sharedSeed={collaboration.roomId || undefined} />}
             {currentGame?.stepKey === 'step10' && <Step10FillJar config={activeLesson.step10} onPrev={goPrevious} onNext={goNext} isLastGame={currentStep === orderedGames.length - 1} onCorrectAnswer={handleCorrectAnswer} sharedSeed={collaboration.roomId || undefined} />}
+            {currentGame?.stepKey === 'step11' && <Step11SpeedSyllables config={activeLesson.step11} onPrev={goPrevious} onNext={goNext} isLastGame={currentStep === orderedGames.length - 1} onCorrectAnswer={handleCorrectAnswer} />}
           </div>
           {currentGame && currentStep < orderedGames.length - 1 && <div className="mt-4 flex justify-center"><button onClick={goNext} className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs font-black text-slate-500 transition hover:border-pink-200 hover:bg-pink-50 hover:text-pink-700">Пропустить задание <span aria-hidden="true">→</span></button></div>}
           {currentGame && currentStep === orderedGames.length - 1 && <div className="mt-4 flex justify-center">{screen === 'preview' ? <button onClick={() => setScreen('builder')} className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-pink-500 to-purple-600 px-6 py-3 text-sm font-black text-white shadow-md transition hover:brightness-105 active:scale-[.98]"><Edit3 className="h-4 w-4" />Вернуться к редактированию</button> : <button onClick={handleFinishLesson} className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-6 py-3 text-sm font-black text-white shadow-md transition hover:brightness-105 active:scale-[.98]"><Award className="h-4 w-4" />Завершить урок</button>}</div>}
