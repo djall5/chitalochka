@@ -92,11 +92,17 @@ function readGames(): GameLibraryItem[] {
   try {
     const stored = localStorage.getItem(GAME_LIBRARY_KEY);
     if (stored) {
-      const custom = JSON.parse(stored) as GameLibraryItem[];
-      if (Array.isArray(custom)) return [...DEFAULT_GAME_LIBRARY, ...custom.filter(game => game.custom)];
+      const saved = JSON.parse(stored) as GameLibraryItem[];
+      if (Array.isArray(saved)) return mergeGameLibrary(saved);
     }
   } catch { /* use the built-in activity catalog */ }
   return DEFAULT_GAME_LIBRARY;
+}
+
+/** New built-in games must appear even when an older cloud snapshot is restored. */
+function mergeGameLibrary(savedGames: GameLibraryItem[] | undefined | null): GameLibraryItem[] {
+  const customGames = (savedGames || []).filter(game => game?.custom);
+  return [...DEFAULT_GAME_LIBRARY, ...customGames];
 }
 
 function getElementPath(root: Element, target: Element): number[] | null {
@@ -124,7 +130,7 @@ function findElementAtPath(root: Element, path: number[]) {
 type Screen = 'library' | 'builder' | 'preview' | 'play' | 'edit' | 'student' | 'student-select' | 'student-portal' | 'desert';
 
 function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspace; studentPortalToken?: string }) {
-  const [games, setGames] = useState<GameLibraryItem[]>(() => cloud.snapshot?.games || readGames());
+  const [games, setGames] = useState<GameLibraryItem[]>(() => mergeGameLibrary(cloud.snapshot?.games || readGames()));
   const [students, setStudents] = useState<StudentRecord[]>(() => cloud.snapshot?.students || readStudents());
   const [activeStudentId, setActiveStudentId] = useState<string | null>(() => cloud.snapshot?.activeStudentId ?? null);
   const [lesson, setLesson] = useState<LessonData>(() => {
@@ -252,7 +258,7 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
     if (localStudentEditVersionRef.current !== savedStudentEditVersionRef.current) return;
     cloudSnapshotRef.current = cloud.snapshot;
     setStudents(cloud.snapshot.students);
-    setGames(cloud.snapshot.games);
+    setGames(mergeGameLibrary(cloud.snapshot.games));
     setLesson(cloud.snapshot.lesson);
     setActiveStudentId(cloud.snapshot.activeStudentId);
   }, [studentPortalToken, cloud.snapshot]);
@@ -719,7 +725,7 @@ function StudentPortalEntry({ token, cloud }: { token: string; cloud: CloudWorks
 
   const snapshot = {
     students: [data.student],
-    games: data.games.length ? data.games : DEFAULT_GAME_LIBRARY,
+    games: mergeGameLibrary(data.games),
     lesson: data.student.lessons[0] || cloneLesson(defaultLessonY),
     activeStudentId: data.student.id,
   };
