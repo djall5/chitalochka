@@ -90,6 +90,29 @@ export function generateSyllables(value: string) {
   return [...new Set(result.length ? result : letters.map(letter => `${letter}А`))].slice(0, 16);
 }
 
+/**
+ * Make simple syllables for the timed syllable game without rewriting the
+ * teacher's text.  In particular, lowercase input stays lowercase in the
+ * result — normalisation is only used to recognise vowels and consonants.
+ */
+export function generateSyllablesPreservingCase(value: string) {
+  const letters = [...value].filter(letter => /[А-Яа-яЁё]/u.test(letter));
+  const uniqueLetters = [...new Map(letters.map(letter => [letter, letter])).values()];
+  const uppercase = (letter: string) => letter.toLocaleUpperCase('ru-RU');
+  const vowels = uniqueLetters.filter(letter => VOWELS.has(uppercase(letter)));
+  const consonants = uniqueLetters.filter(letter => {
+    const normalized = uppercase(letter);
+    return !VOWELS.has(normalized) && normalized !== 'Ь' && normalized !== 'Ъ';
+  });
+  const isLowercase = (letter: string) => letter === letter.toLocaleLowerCase('ru-RU');
+  const fallbackVowels = (isLowercase(consonants[0] || letters[0] || 'А') ? ['а', 'о', 'у', 'и'] : ['А', 'О', 'У', 'И']);
+  const usedVowels = vowels.length ? vowels : fallbackVowels;
+  const usedConsonants = consonants.length
+    ? consonants
+    : [isLowercase(vowels[0] || letters[0] || 'А') ? 'м' : 'М'];
+  return [...new Set(usedConsonants.flatMap(consonant => usedVowels.map(vowel => `${consonant}${vowel}`)))].slice(0, 16);
+}
+
 export function mascotForLetters(value: string) {
   const letter = [...value.toLocaleUpperCase('ru-RU')].find(item => /[А-ЯЁ]/u.test(item)) || '';
   return mascots[letter] || '🌟';

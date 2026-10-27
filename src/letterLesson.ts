@@ -82,7 +82,7 @@ export function applyLetterToSelectedGames(lesson: LessonData, gameKeys: GameSte
   if (gameKeys.includes('step8')) next.step8 = { ...next.step8, title: `🏠 Построй дом из слов с буквой ${letter}`, instruction: `Прочитайте слова с буквой ${letter} и стройте дом.`, words };
   if (gameKeys.includes('step9')) next.step9 = { ...next.step9, title: `🃏 Мемори: буква ${letter}`, instruction: `Открывайте пары с буквой ${letter} и её слогами.`, mode: 'symbols', pairs: [letter, ...syllables.slice(0, 3)].map((symbol, index) => ({ id: `letter-memory-${letter}-${index + 1}`, first: symbol, second: symbol })) };
   if (gameKeys.includes('step10')) next.step10 = { ...next.step10, title: `🫙 Найди букву ${letter}`, instruction: `Найди букву ${letter} или ${letter.toLocaleLowerCase('ru-RU')} среди остальных и перетащи её в банку.`, targetLetter: letter };
-  if (gameKeys.includes('step11')) next.step11 = { ...next.step11, title: `⚡ Найди слог с буквой ${letter}`, instruction: `Смотри на большой слог с буквой ${letter} и найди его среди карточек.`, syllables };
+  if (gameKeys.includes('step11')) next.step11 = { ...next.step11, title: `⚡ Найди слог с буквой ${letter}`, instruction: `Смотри на большой слог с буквой ${letter} и найди его среди карточек.`, practiceLetters: `${letter}, А, О, У, И`, syllables };
   return next;
 }
 

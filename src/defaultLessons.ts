@@ -99,7 +99,7 @@ export const defaultLessonY: LessonData = {
   step8: { title: '🏠 Построй дом!', instruction: 'Прочитай слово вслух и нажми на кирпичик, чтобы поставить его в дом. Можно проверить чтение через микрофон.', words: ['ДОМ', 'ОКНО', 'КРЫША', 'СТЕНА', 'ДВЕРЬ', 'ТРУБА'] },
   step9: { title: '🃏 Мемори', instruction: 'Открывай карточки по две и ищи одинаковые буквы или слоги.', mode: 'symbols', pairs: [{ id: 'mem-y-1', first: 'Й', second: 'Й' }, { id: 'mem-y-2', first: 'ЙО', second: 'ЙО' }, { id: 'mem-y-3', first: 'АЙ', second: 'АЙ' }, { id: 'mem-y-4', first: 'ОЙ', second: 'ОЙ' }] },
   step10: { title: '🫙 Заполни банку', instruction: 'Найди букву Й среди остальных и перетащи её в банку. Заглавная и строчная буквы подходят.', targetLetter: 'Й', targetCount: 16 },
-  step11: { title: '⚡ Найди слог на время!', instruction: 'Смотри на большой слог и быстро найди его среди карточек.', syllables: ['ЙА', 'ЙО', 'АЙ', 'ОЙ'], timeLimit: 30, optionsPerRound: 4 },
+  step11: { title: '⚡ Найди слог на время!', instruction: 'Смотри на большой слог и быстро найди его среди карточек.', practiceLetters: 'Й, А, О, И', syllables: ['ЙА', 'ЙО', 'АЙ', 'ОЙ'], timeLimit: 30, optionsPerRound: 4 },
 };
 
 export const defaultLessonS: LessonData = {
@@ -191,7 +191,7 @@ export const defaultLessonS: LessonData = {
   step8: { title: '🏠 Построй дом!', instruction: 'Прочитай слово вслух и нажми на кирпичик, чтобы поставить его в дом. Можно проверить чтение через микрофон.', words: ['САД', 'СОК', 'СЫР', 'НОС', 'ЛЕС', 'КОСА'] },
   step9: { title: '🃏 Мемори', instruction: 'Открывай карточки по две и ищи одинаковые буквы или слоги.', mode: 'symbols', pairs: [{ id: 'mem-s-1', first: 'СА', second: 'СА' }, { id: 'mem-s-2', first: 'СО', second: 'СО' }, { id: 'mem-s-3', first: 'СУ', second: 'СУ' }, { id: 'mem-s-4', first: 'СИ', second: 'СИ' }] },
   step10: { title: '🫙 Заполни банку', instruction: 'Найди букву С среди остальных и перетащи её в банку. Заглавная и строчная буквы подходят.', targetLetter: 'С', targetCount: 16 },
-  step11: { title: '⚡ Найди слог на время!', instruction: 'Смотри на большой слог и быстро найди его среди карточек.', syllables: ['СА', 'СО', 'СУ', 'СИ'], timeLimit: 30, optionsPerRound: 4 },
+  step11: { title: '⚡ Найди слог на время!', instruction: 'Смотри на большой слог и быстро найди его среди карточек.', practiceLetters: 'С, А, О, У, И', syllables: ['СА', 'СО', 'СУ', 'СИ'], timeLimit: 30, optionsPerRound: 4 },
 };
 
 export const PRESET_LESSONS = [defaultLessonY, defaultLessonS];

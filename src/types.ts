@@ -118,6 +118,8 @@ export interface Step10Config {
 export interface Step11Config {
   title: string;
   instruction: string;
+  /** Source letters for the optional syllable generator in the teacher editor. */
+  practiceLetters?: string;
   /** Every item becomes the large target syllable once. */
   syllables: string[];
   /** Total time for finding all target syllables. */
