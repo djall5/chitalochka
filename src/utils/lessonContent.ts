@@ -95,7 +95,7 @@ export function generateSyllables(value: string) {
  * teacher's text.  In particular, lowercase input stays lowercase in the
  * result — normalisation is only used to recognise vowels and consonants.
  */
-export function generateSyllablesPreservingCase(value: string) {
+export function generateSyllablesPreservingCase(value: string, count = 16) {
   const letters = [...value].filter(letter => /[А-Яа-яЁё]/u.test(letter));
   const uniqueLetters = [...new Map(letters.map(letter => [letter, letter])).values()];
   const uppercase = (letter: string) => letter.toLocaleUpperCase('ru-RU');
@@ -105,12 +105,14 @@ export function generateSyllablesPreservingCase(value: string) {
     return !VOWELS.has(normalized) && normalized !== 'Ь' && normalized !== 'Ъ';
   });
   const isLowercase = (letter: string) => letter === letter.toLocaleLowerCase('ru-RU');
-  const fallbackVowels = (isLowercase(consonants[0] || letters[0] || 'А') ? ['а', 'о', 'у', 'и'] : ['А', 'О', 'У', 'И']);
+  const fallbackVowels = (isLowercase(consonants[0] || letters[0] || 'А') ? ['а', 'о', 'у', 'ы', 'э', 'е', 'ё', 'ю', 'я', 'и'] : ['А', 'О', 'У', 'Ы', 'Э', 'Е', 'Ё', 'Ю', 'Я', 'И']);
   const usedVowels = vowels.length ? vowels : fallbackVowels;
   const usedConsonants = consonants.length
     ? consonants
     : [isLowercase(vowels[0] || letters[0] || 'А') ? 'м' : 'М'];
-  return [...new Set(usedConsonants.flatMap(consonant => usedVowels.map(vowel => `${consonant}${vowel}`)))].slice(0, 16);
+  const desiredCount = Math.max(2, Math.min(16, Number.isFinite(count) ? Math.floor(count) : 16));
+  const vowelPool = [...new Map([...usedVowels, ...fallbackVowels].map(vowel => [vowel, vowel])).values()];
+  return [...new Set(usedConsonants.flatMap(consonant => vowelPool.map(vowel => `${consonant}${vowel}`)))].slice(0, desiredCount);
 }
 
 export function mascotForLetters(value: string) {
