@@ -121,7 +121,7 @@ export function Step8BuildHouse({ config, onPrev, onNext, isLastGame, onCorrectA
           <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${rows}, minmax(42px, 1fr))` }}>
             {Array.from({ length: words.length }, (_, slot) => {
               const word = brickForSlot(slot);
-              return <div key={slot} className={`flex min-h-11 min-w-0 items-center justify-center rounded-md border-2 px-1 text-[10px] font-black sm:text-xs ${word ? 'border-orange-800 bg-gradient-to-b from-orange-400 to-orange-600 text-white shadow' : 'border-dashed border-amber-500/50 bg-amber-100/60'}`}>{word || ''}</div>;
+              return <div key={slot} className={`flex min-h-11 min-w-0 items-center justify-center rounded-md border-2 px-1 text-[10px] font-black sm:text-xs ${word ? 'border-orange-200 bg-orange-50 text-orange-950 shadow-sm' : 'border-dashed border-amber-500/50 bg-amber-50/70'}`}>{word || ''}</div>;
             })}
           </div>
           <div className="mx-auto mt-1 h-12 w-14 rounded-t-lg border-2 border-amber-900 bg-sky-100 sm:h-14 sm:w-16" />
