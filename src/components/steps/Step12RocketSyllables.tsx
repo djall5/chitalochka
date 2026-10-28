@@ -113,8 +113,8 @@ export function Step12RocketSyllables({ config, onPrev, onNext, isLastGame, onCo
 
       <div className={`absolute left-1/2 top-[54px] z-20 w-[min(82vw,330px)] -translate-x-1/2 transition-[transform,opacity] duration-700 ease-in ${launched ? '-translate-y-[900px] opacity-0' : 'translate-y-0 opacity-100'}`}>
         <img src={`${import.meta.env.BASE_URL}games/rocket-syllables.png`} alt="Ракета" className="block h-auto w-full drop-shadow-[0_18px_28px_rgba(0,0,0,.42)]" draggable={false} />
-        <div className="absolute left-[35%] top-[24%] flex h-[34%] w-[30%] flex-col justify-around text-center font-black leading-none text-slate-800 [text-shadow:0_1px_0_rgba(255,255,255,.9)]" aria-label={words.join(', ')}>
-          {words.slice(0, 10).map((word, index) => <span key={`${word}-${index}`} className="truncate px-0.5 text-[clamp(0.86rem,3.8vw,1.22rem)]">{word}</span>)}
+        <div className="absolute left-[36.5%] top-[24%] flex h-[34%] w-[27%] flex-col items-start justify-around font-black leading-none text-slate-800 [text-shadow:0_1px_0_rgba(255,255,255,.9)]" aria-label={words.join(', ')}>
+          {words.slice(0, 10).map((word, index) => <span key={`${word}-${index}`} className="block w-full truncate text-left text-[clamp(0.86rem,3.8vw,1.22rem)]">{word}</span>)}
         </div>
       </div>
 
