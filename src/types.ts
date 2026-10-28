@@ -128,6 +128,16 @@ export interface Step11Config {
   optionsPerRound: number;
 }
 
+/** A reading ladder: the next entered consonant is added on the left. */
+export interface Step12Config {
+  title: string;
+  instruction: string;
+  vowels: string[];
+  consonants: string[];
+  /** The editable reading columns, starting with the vowel-only column. */
+  stages: string[][];
+}
+
 export interface ReadingTextPage {
   id: string;
   imageDataUrl: string;
@@ -167,6 +177,7 @@ export interface LessonData {
   step9: Step9Config;
   step10: Step10Config;
   step11: Step11Config;
+  step12: Step12Config;
 }
 
 export type LessonStatus = 'in-progress' | 'completed' | 'repeat';

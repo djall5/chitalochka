@@ -108,6 +108,10 @@ export function collectLessonLearningProgress(lesson: LessonData, games: Progres
     if (stepKey === 'step11') {
       (Array.isArray(step.syllables) ? step.syllables : []).forEach(item => addLetters(letters, String(item ?? '')));
     }
+    if (stepKey === 'step12') {
+      (Array.isArray(step.vowels) ? step.vowels : []).forEach(item => addLetters(letters, String(item ?? '')));
+      (Array.isArray(step.consonants) ? step.consonants : []).forEach(item => addLetters(letters, String(item ?? '')));
+    }
     if (stepKey === 'step3' || stepKey === 'step10') {
       const targets = Array.isArray(step.targetLetters) ? step.targetLetters : [step.targetLetter];
       targets.forEach(item => addLetters(letters, String(item ?? '')));

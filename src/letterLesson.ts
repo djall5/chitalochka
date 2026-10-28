@@ -2,6 +2,7 @@ import { LessonData } from './types';
 import { GameStepKey } from './gameLibrary';
 import { autoGenerateMazeGrid, autoGenerateSyllableGrid } from './utils/generators';
 import { syllabifyRussian } from './utils/syllabifyRussian';
+import { DEFAULT_ROCKET_VOWELS, generateRocketStages } from './utils/rocketSyllables';
 
 const vowels = ['А', 'О', 'У', 'Ы', 'Э', 'И', 'Е', 'Ё', 'Ю', 'Я'];
 const paletteColors = ['#f59e0b', '#ef4444', '#3b82f6', '#10b981'];
@@ -83,6 +84,11 @@ export function applyLetterToSelectedGames(lesson: LessonData, gameKeys: GameSte
   if (gameKeys.includes('step9')) next.step9 = { ...next.step9, title: `🃏 Мемори: буква ${letter}`, instruction: `Открывайте пары с буквой ${letter} и её слогами.`, mode: 'symbols', pairs: [letter, ...syllables.slice(0, 3)].map((symbol, index) => ({ id: `letter-memory-${letter}-${index + 1}`, first: symbol, second: symbol })) };
   if (gameKeys.includes('step10')) next.step10 = { ...next.step10, title: `🫙 Найди букву ${letter}`, instruction: `Найди букву ${letter} или ${letter.toLocaleLowerCase('ru-RU')} среди остальных и перетащи её в банку.`, targetLetter: letter };
   if (gameKeys.includes('step11')) next.step11 = { ...next.step11, title: `⚡ Найди слог с буквой ${letter}`, instruction: `Смотри на большой слог с буквой ${letter} и найди его среди карточек.`, practiceLetters: `${letter}, А, О, У, И`, syllables };
+  if (gameKeys.includes('step12') && !vowels.includes(letter.toLocaleUpperCase('ru-RU'))) {
+    const rocketVowels = next.step12.vowels.length ? next.step12.vowels : [...DEFAULT_ROCKET_VOWELS];
+    const consonants = [letter];
+    next.step12 = { ...next.step12, title: `🚀 Ракета слогов: ${letter}`, instruction: `Прочитай столбик с буквой ${letter} и запускай ракету выше.`, vowels: rocketVowels, consonants, stages: generateRocketStages(rocketVowels, consonants) };
+  }
   return next;
 }
 
