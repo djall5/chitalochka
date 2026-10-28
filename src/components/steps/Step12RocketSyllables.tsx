@@ -114,10 +114,12 @@ export function Step12RocketSyllables({ config, onPrev, onNext, isLastGame, onCo
         <div className="rounded-full border border-white/15 bg-slate-950/30 px-3 py-1.5 text-[10px] font-black text-amber-100">{launched ? 'В КОСМОСЕ!' : `${safeStage + 1} / ${stages.length}`}</div>
       </div>
 
-      <div className={`absolute left-1/2 top-[54px] z-20 w-[min(82vw,330px)] -translate-x-1/2 ${launched ? 'rocket-launch' : ''}`}>
-        <img src={`${import.meta.env.BASE_URL}games/rocket-syllables.png`} alt="Ракета" className="block h-auto w-full drop-shadow-[0_18px_28px_rgba(0,0,0,.42)]" draggable={false} />
-        <div className={`absolute left-1/2 top-[24%] grid h-[34%] -translate-x-1/2 items-center font-black leading-none text-slate-800 [text-shadow:0_1px_0_rgba(255,255,255,.9)] ${compactColumn ? 'text-[clamp(0.76rem,3.1vw,1rem)]' : 'text-[clamp(0.86rem,3.8vw,1.22rem)]'}`} style={{ width: columnWidth, gridTemplateRows: `repeat(${Math.min(words.length, 10)}, minmax(0, 1fr))` }} aria-label={words.join(', ')}>
-          {words.slice(0, 10).map((word, index) => <span key={`${word}-${index}`} className="block w-full whitespace-nowrap text-left">{word}</span>)}
+      <div className="absolute left-1/2 top-[54px] z-20 w-[min(82vw,330px)] -translate-x-1/2">
+        <div className={launched ? 'rocket-launch-motion' : ''}>
+          <img src={`${import.meta.env.BASE_URL}games/rocket-syllables.png`} alt="Ракета" className="block h-auto w-full drop-shadow-[0_18px_28px_rgba(0,0,0,.42)]" draggable={false} />
+          <div className={`absolute left-1/2 top-[24%] grid h-[34%] -translate-x-1/2 items-center font-black leading-none text-slate-800 [text-shadow:0_1px_0_rgba(255,255,255,.9)] ${compactColumn ? 'text-[clamp(0.76rem,3.1vw,1rem)]' : 'text-[clamp(0.86rem,3.8vw,1.22rem)]'}`} style={{ width: columnWidth, gridTemplateRows: `repeat(${Math.min(words.length, 10)}, minmax(0, 1fr))` }} aria-label={words.join(', ')}>
+            {words.slice(0, 10).map((word, index) => <span key={`${word}-${index}`} className="block w-full whitespace-nowrap text-left">{word}</span>)}
+          </div>
         </div>
       </div>
 
