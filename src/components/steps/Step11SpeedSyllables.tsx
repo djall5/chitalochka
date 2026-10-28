@@ -21,6 +21,22 @@ function shuffle<T>(items: T[]) {
   return copy;
 }
 
+const vowelLetters = new Set(['А', 'О', 'У', 'Ы', 'Э', 'Е', 'Ё', 'Ю', 'Я', 'И']);
+const fallbackConsonants = ['М', 'Н', 'Л', 'Р', 'С', 'Т', 'К', 'П'];
+
+function makeRandomSyllables(targets: string[], count: number) {
+  const lowercase = targets.some(value => value === value.toLocaleLowerCase('ru-RU'));
+  const normalize = (value: string) => value.toLocaleUpperCase('ru-RU');
+  const characters = targets.flatMap(value => [...value]);
+  const vowels = [...new Set(characters.filter(character => vowelLetters.has(normalize(character))))];
+  const consonants = [...new Set(characters.filter(character => /[А-Яа-яЁё]/u.test(character) && !vowelLetters.has(normalize(character)) && !['Ь', 'Ъ'].includes(normalize(character))))];
+  const fallbackVowels = (lowercase ? ['а', 'о', 'у', 'ы', 'э', 'е', 'ё', 'ю', 'я', 'и'] : ['А', 'О', 'У', 'Ы', 'Э', 'Е', 'Ё', 'Ю', 'Я', 'И']);
+  const fallbackConsonantPool = lowercase ? fallbackConsonants.map(letter => letter.toLocaleLowerCase('ru-RU')) : fallbackConsonants;
+  const pool = [...new Set([...(consonants.length ? consonants : fallbackConsonantPool), ...fallbackConsonantPool].flatMap(consonant => [...(vowels.length ? vowels : fallbackVowels), ...fallbackVowels].map(vowel => `${consonant}${vowel}`)))];
+  const targetSet = new Set(targets.map(normalize));
+  return shuffle(pool.filter(item => !targetSet.has(normalize(item)))).slice(0, count);
+}
+
 export function Step11SpeedSyllables({ config, onPrev, onNext, isLastGame, onCorrectAnswer }: Props) {
   const syllables = useMemo(() => config.syllables.map(item => item.trim()).filter(Boolean), [config.syllables]);
   const configKey = `${syllables.join('|')}:${config.timeLimit}:${config.optionsPerRound}`;
@@ -44,9 +60,10 @@ export function Step11SpeedSyllables({ config, onPrev, onNext, isLastGame, onCor
   const complete = finished || (queue.length > 0 && round >= queue.length);
   const options = useMemo(() => {
     if (!target) return [];
-    const desiredCount = Math.min(Math.max(2, config.optionsPerRound || 4), syllables.length);
-    const distractors = shuffle(syllables.filter(item => item !== target)).slice(0, Math.max(0, desiredCount - 1));
-    return shuffle([target, ...distractors]);
+    const desiredCount = Math.max(2, config.optionsPerRound || 8);
+    const otherStudySyllables = shuffle(syllables.filter(item => item.toLocaleUpperCase('ru-RU') !== target.toLocaleUpperCase('ru-RU'))).slice(0, Math.min(2, desiredCount - 1));
+    const randomSyllables = makeRandomSyllables(syllables, Math.max(0, desiredCount - 1 - otherStudySyllables.length));
+    return shuffle([target, ...otherStudySyllables, ...randomSyllables]);
   }, [target, syllables, config.optionsPerRound]);
 
   useEffect(() => {

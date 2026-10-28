@@ -122,6 +122,8 @@ export interface Step11Config {
   practiceLetters?: string;
   /** Every item becomes the large target syllable once. */
   syllables: string[];
+  /** Number of target syllables to generate and practise. */
+  targetCount: number;
   /** Total time for finding all target syllables. */
   timeLimit: number;
   /** Number of answer cards visible in one round. */
