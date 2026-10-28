@@ -101,8 +101,8 @@ export function Step12RocketSyllables({ config, onPrev, onNext, isLastGame, onCo
         const distance = displayStage - layerIndex;
         const active = distance === 0;
         const passed = distance > 0;
-        const transform = active ? 'translate3d(0, 0, 0) scale(1)' : passed ? `translate3d(${planet.drift}px, 760px, 0) scale(1.18)` : `translate3d(${planet.drift}px, -360px, 0) scale(.82)`;
-        return <div key={`${layerIndex}-${index}`} className="pointer-events-none absolute z-[1] rounded-full transition-all duration-[1500ms] ease-in-out" style={{ left: planet.left, top: planet.top, width: planet.size, height: planet.size, opacity: active ? 0.9 : 0, transform, background: planet.color, boxShadow: 'inset -12px -12px 20px rgba(0,0,0,.18), inset 9px 8px 16px rgba(255,255,255,.16)' }}>
+        const transform = launched ? `translate3d(${planet.drift * 1.4}px, 920px, 0) scale(1.24)` : active ? 'translate3d(0, 0, 0) scale(1)' : passed ? `translate3d(${planet.drift}px, 760px, 0) scale(1.18)` : `translate3d(${planet.drift}px, -360px, 0) scale(.82)`;
+        return <div key={`${layerIndex}-${index}`} className="pointer-events-none absolute z-[1] rounded-full transition-all duration-[1200ms] ease-in" style={{ left: planet.left, top: planet.top, width: planet.size, height: planet.size, opacity: launched ? 0 : active ? 0.9 : 0, transform, background: planet.color, boxShadow: 'inset -12px -12px 20px rgba(0,0,0,.18), inset 9px 8px 16px rgba(255,255,255,.16)' }}>
           <span className="absolute left-[19%] top-[18%] h-[15%] w-[28%] rounded-full bg-white/15" />
           <span className="absolute bottom-[20%] right-[18%] h-[12%] w-[18%] rounded-full bg-black/10" />
           {planet.ring && <span className="absolute left-[-25%] top-[44%] h-[20%] w-[150%] -rotate-[19deg] rounded-[50%] border-[5px] border-amber-200/75" />}
@@ -114,7 +114,7 @@ export function Step12RocketSyllables({ config, onPrev, onNext, isLastGame, onCo
         <div className="rounded-full border border-white/15 bg-slate-950/30 px-3 py-1.5 text-[10px] font-black text-amber-100">{launched ? 'В КОСМОСЕ!' : `${safeStage + 1} / ${stages.length}`}</div>
       </div>
 
-      <div className={`absolute left-1/2 top-[54px] z-20 w-[min(82vw,330px)] -translate-x-1/2 transition-[transform,opacity] duration-700 ease-in ${launched ? '-translate-y-[900px] opacity-0' : 'translate-y-0 opacity-100'}`}>
+      <div className={`absolute left-1/2 top-[54px] z-20 w-[min(82vw,330px)] -translate-x-1/2 ${launched ? 'rocket-launch' : ''}`}>
         <img src={`${import.meta.env.BASE_URL}games/rocket-syllables.png`} alt="Ракета" className="block h-auto w-full drop-shadow-[0_18px_28px_rgba(0,0,0,.42)]" draggable={false} />
         <div className={`absolute left-1/2 top-[24%] grid h-[34%] -translate-x-1/2 items-center font-black leading-none text-slate-800 [text-shadow:0_1px_0_rgba(255,255,255,.9)] ${compactColumn ? 'text-[clamp(0.76rem,3.1vw,1rem)]' : 'text-[clamp(0.86rem,3.8vw,1.22rem)]'}`} style={{ width: columnWidth, gridTemplateRows: `repeat(${Math.min(words.length, 10)}, minmax(0, 1fr))` }} aria-label={words.join(', ')}>
           {words.slice(0, 10).map((word, index) => <span key={`${word}-${index}`} className="block w-full whitespace-nowrap text-left">{word}</span>)}

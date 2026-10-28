@@ -10,3 +10,22 @@
 .desert-wet-reveal {
   animation: desert-wet-reveal 2.4s ease-in-out both;
 }
+
+@keyframes rocket-launch {
+  0% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+  16% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(-18px) scale(1.01);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-980px) scale(.82);
+  }
+}
+
+.rocket-launch {
+  animation: rocket-launch 850ms cubic-bezier(.58, 0, .92, .42) both;
+}
