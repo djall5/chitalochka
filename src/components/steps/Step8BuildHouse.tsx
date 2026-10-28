@@ -121,7 +121,7 @@ export function Step8BuildHouse({ config, onPrev, onNext, isLastGame, onCorrectA
           <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${rows}, minmax(42px, 1fr))` }}>
             {Array.from({ length: words.length }, (_, slot) => {
               const word = brickForSlot(slot);
-              return <div key={slot} className={`flex min-h-11 min-w-0 items-center justify-center rounded-md border-2 px-1 text-[10px] font-black sm:text-xs ${word ? 'border-orange-200 bg-orange-50 text-orange-950 shadow-sm' : 'border-dashed border-amber-500/50 bg-amber-50/70'}`}>{word || ''}</div>;
+              return <div key={slot} className={`flex min-h-11 min-w-0 items-center justify-center rounded-md border-2 px-1 text-[10px] font-black sm:text-xs ${word ? 'border-orange-800 bg-gradient-to-b from-orange-400 to-orange-600 text-white shadow' : 'border-dashed border-amber-500/50 bg-amber-100/60'}`}>{word || ''}</div>;
             })}
           </div>
           <div className="mx-auto mt-1 h-12 w-14 rounded-t-lg border-2 border-amber-900 bg-sky-100 sm:h-14 sm:w-16" />
@@ -133,7 +133,7 @@ export function Step8BuildHouse({ config, onPrev, onNext, isLastGame, onCorrectA
 
     {currentWord ? <div className="mt-4 flex w-full flex-col items-center">
       <p className="text-xs font-black text-slate-600">Кирпичик {currentIndex + 1} из {words.length} · прочитай слово вслух</p>
-      <button onClick={() => placeCurrentWord()} disabled={listening} className="mt-2 min-w-48 rounded-xl border-2 border-orange-700 bg-gradient-to-b from-orange-300 to-orange-500 px-6 py-3 text-xl font-black text-orange-950 shadow-md transition hover:-translate-y-0.5 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-60" aria-label={`Прочитал слово ${currentWord}, поставить кирпич`}>{currentWord}</button>
+      <button onClick={() => placeCurrentWord()} disabled={listening} className="mt-2 min-w-48 rounded-xl border-2 border-orange-200 bg-orange-50 px-6 py-3 text-xl font-black text-orange-950 shadow-sm transition hover:-translate-y-0.5 hover:bg-orange-100 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60" aria-label={`Прочитал слово ${currentWord}, поставить кирпич`}>{currentWord}</button>
       <p className="mt-1 text-[10px] font-semibold text-slate-400">Нажми на слово, когда прочитаешь, — кирпич сразу встанет в дом.</p>
       <button onClick={listening ? stopListening : startVoiceCheck} className={`mt-3 inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-black ${listening ? 'bg-rose-500 text-white' : 'bg-violet-100 text-violet-700 hover:bg-violet-200'}`}>{listening ? <><Square className="h-3.5 w-3.5 fill-current" />Остановить проверку</> : <><Mic className="h-4 w-4" />Проверить слово голосом</>}</button>
       <p className="mt-1 max-w-sm text-[10px] font-semibold text-slate-400">В некоторых браузерах распознавание речи может выполняться онлайн.</p>
