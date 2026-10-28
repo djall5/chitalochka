@@ -62,6 +62,7 @@ export function Step12RocketSyllables({ config, onPrev, onNext, isLastGame, onCo
   const safeStage = Math.min(stage, Math.max(0, stages.length - 1));
   const displayStage = launched ? stages.length : safeStage;
   const words = stages[safeStage] || [];
+  const columnWidth = `${Math.max(1, Math.min(4, ...words.map(word => [...word].length))) + 0.25}ch`;
 
   useEffect(() => {
     setStage(0);
@@ -113,7 +114,7 @@ export function Step12RocketSyllables({ config, onPrev, onNext, isLastGame, onCo
 
       <div className={`absolute left-1/2 top-[54px] z-20 w-[min(82vw,330px)] -translate-x-1/2 transition-[transform,opacity] duration-700 ease-in ${launched ? '-translate-y-[900px] opacity-0' : 'translate-y-0 opacity-100'}`}>
         <img src={`${import.meta.env.BASE_URL}games/rocket-syllables.png`} alt="Ракета" className="block h-auto w-full drop-shadow-[0_18px_28px_rgba(0,0,0,.42)]" draggable={false} />
-        <div className="absolute left-[36.5%] top-[24%] flex h-[34%] w-[27%] flex-col items-start justify-around font-black leading-none text-slate-800 [text-shadow:0_1px_0_rgba(255,255,255,.9)]" aria-label={words.join(', ')}>
+        <div className="absolute left-1/2 top-[24%] flex h-[34%] -translate-x-1/2 flex-col items-start justify-around font-black leading-none text-slate-800 [text-shadow:0_1px_0_rgba(255,255,255,.9)]" style={{ width: columnWidth }} aria-label={words.join(', ')}>
           {words.slice(0, 10).map((word, index) => <span key={`${word}-${index}`} className="block w-full truncate text-left text-[clamp(0.86rem,3.8vw,1.22rem)]">{word}</span>)}
         </div>
       </div>
