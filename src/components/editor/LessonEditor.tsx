@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { LessonData, PaletteItem, WordFillItem, ReadingCardItem } from '../../types';
 import { autoGenerateMazeGrid, autoGenerateSyllableGrid } from '../../utils/generators';
+import { emojiForWord, emojiOptionsForWord } from '../../utils/lessonContent';
 import { PRESET_LESSONS, defaultLessonY } from '../../defaultLessons';
 import {
   Save,
@@ -48,6 +49,7 @@ export const LessonEditor: React.FC<Props> = ({
   const [savedNotice, setSavedNotice] = useState(false);
   const [importJsonText, setImportJsonText] = useState('');
   const [showImportBox, setShowImportBox] = useState(false);
+  const [emojiPickerCardId, setEmojiPickerCardId] = useState<string | null>(null);
 
   const handleSave = () => {
     onSave(data);
@@ -262,7 +264,7 @@ export const LessonEditor: React.FC<Props> = ({
   const handleAddCard = () => {
     const newCard: ReadingCardItem = {
       id: `c_${Date.now()}`,
-      icon: '⭐',
+      icon: '🌟',
       displayWord: 'Новое слово',
       speakWord: 'Новое слово',
     };
@@ -1091,15 +1093,13 @@ export const LessonEditor: React.FC<Props> = ({
                   key={card.id}
                   className="bg-white p-3 rounded-2xl border border-slate-200 shadow-xs flex flex-col gap-2"
                 >
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={card.icon}
-                      onChange={e =>
-                        handleUpdateCard(idx, { icon: e.target.value })
-                      }
-                      className="w-12 text-center text-2xl py-1 rounded-xl bg-slate-50 border border-slate-300"
-                    />
+                  <div className="flex items-start gap-2">
+                    <div className="relative">
+                      <button type="button" title="Выбрать эмодзи" onClick={() => setEmojiPickerCardId(current => current === card.id ? null : card.id)} className="flex h-11 w-12 items-center justify-center rounded-xl border border-slate-300 bg-slate-50 text-2xl">
+                        {card.icon || emojiForWord(card.displayWord || card.speakWord)}
+                      </button>
+                      {emojiPickerCardId === card.id && <div className="absolute z-10 mt-1 grid grid-cols-3 gap-1 rounded-xl border border-pink-200 bg-white p-1.5 shadow-lg">{emojiOptionsForWord(card.displayWord || card.speakWord).map(emoji => <button key={emoji} type="button" className="rounded-lg p-1 text-xl hover:bg-pink-50" onClick={() => { handleUpdateCard(idx, { icon: emoji }); setEmojiPickerCardId(null); }}>{emoji}</button>)}</div>}
+                    </div>
                     <div className="flex-1">
                       <label className="block text-[10px] font-bold text-slate-500">
                         Слово
@@ -1107,12 +1107,7 @@ export const LessonEditor: React.FC<Props> = ({
                       <input
                         type="text"
                         value={card.displayWord || card.speakWord}
-                        onChange={e =>
-                          handleUpdateCard(idx, {
-                            displayWord: e.target.value,
-                            speakWord: e.target.value,
-                          })
-                        }
+                        onChange={e => handleUpdateCard(idx, { displayWord: e.target.value, speakWord: e.target.value, icon: emojiForWord(e.target.value) })}
                         className="w-full px-2 py-1 text-sm font-black text-slate-800 bg-slate-50 rounded-lg border border-slate-200"
                       />
                     </div>

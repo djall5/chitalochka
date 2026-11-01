@@ -2,15 +2,16 @@ import React, { useState } from 'react';
 import { Step6Config } from '../../types';
 import { playChime } from '../../utils/phonetics';
 import { syllabifyRussian } from '../../utils/syllabifyRussian';
-import { RotateCcw, ArrowLeft, Sparkles } from 'lucide-react';
+import { RotateCcw, ArrowLeft, ArrowRight, Sparkles } from 'lucide-react';
 
 interface Props {
   config: Step6Config;
   onPrev: () => void;
+  onNext: () => void;
   onCorrectAnswer?: (answerId: string, points?: number) => void;
 }
 
-export const Step6ReadingCards: React.FC<Props> = ({ config, onPrev, onCorrectAnswer }) => {
+export const Step6ReadingCards: React.FC<Props> = ({ config, onPrev, onNext, onCorrectAnswer }) => {
   const [readCardIds, setReadCardIds] = useState<string[]>([]);
   const [lastReadWord, setLastReadWord] = useState<string | null>(null);
 
@@ -115,6 +116,13 @@ export const Step6ReadingCards: React.FC<Props> = ({ config, onPrev, onCorrectAn
         >
           <ArrowLeft className="w-4 h-4" />
           Назад
+        </button>
+        <button
+          onClick={onNext}
+          className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-pink-500 hover:bg-pink-600 text-white font-bold text-xs md:text-sm transition-colors cursor-pointer"
+        >
+          Дальше
+          <ArrowRight className="w-4 h-4" />
         </button>
       </div>
 
