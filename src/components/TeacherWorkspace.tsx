@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { BookOpen, Check, ChevronDown, ChevronUp, CopyPlus, Gamepad2, Library, Pencil, Play, Plus, Search, Trash2, Upload, UserRound, WandSparkles, X } from 'lucide-react';
-import { LessonData, LessonStatus, MemoryPair, ReadingTextPage } from '../types';
+import { LessonData, LessonStatus, MemoryPair, ReadingTextPage, Step13Config } from '../types';
 import { cloneLesson, GameLibraryItem, GameStepKey, lessonGameOrder } from '../gameLibrary';
 import { applyLetterToSelectedGames, isRussianLetter } from '../letterLesson';
 import { syllabifyRussian } from '../utils/syllabifyRussian';
 import { emojiForWord, emojiOptionsForWord, generateSyllables, generateSyllablesPreservingCase, makePreschoolText, mascotForLetters } from '../utils/lessonContent';
 import { autoGenerateMazeGrid, autoGenerateSyllableGrid } from '../utils/generators';
 import { generateRocketStages, parseRocketConsonants, parseRocketVowels } from '../utils/rocketSyllables';
+import { ColoringEditor } from './ColoringEditor';
 
 type Props = {
   lessons: LessonData[];
@@ -170,10 +171,16 @@ export function LessonBuilder({ initialLesson, games, isEditing = false, onBack,
   };
   const save = (play: boolean) => {
     if (!data.gameOrder?.length) { setError('Добавьте в урок хотя бы одну игру.'); return; }
+    if (!coloringReady()) { setError('Настройте игру «Прочитай и раскрась»: загрузите рисунок, введите предложения и задайте цвет каждой области.'); return; }
     onSave(cloneLesson(data), play);
   };
+  const coloringReady = () => selectedGames.filter(game => game.stepKey === 'step13').every(game => {
+    const config = (data.gameInstances?.[game.id]?.config.step13 || data.step13) as Step13Config;
+    return config.imageDataUrl && config.regionMapDataUrl && config.sentences.some(sentence => sentence.trim()) && config.regions.some(region => region.enabled) && config.regions.every(region => !region.enabled || !!region.targetColor);
+  });
   const preview = () => {
     if (!data.gameOrder?.length) { setError('Добавьте в урок хотя бы одну игру, чтобы открыть предпросмотр.'); return; }
+    if (!coloringReady()) { setError('Сначала настройте игру «Прочитай и раскрась».'); return; }
     onPreview(cloneLesson(data));
   };
 
@@ -282,7 +289,9 @@ function GameContentEditor({ game, lesson, onChange, onSave, onCancel }: GameCon
       setImageError('');
     } catch { setImageError('Не удалось прочитать этот файл изображения.'); }
   };
-  const preview = stepKey === 'step3'
+  const preview = stepKey === 'step13'
+    ? <div className="w-full max-w-sm space-y-2">{lesson.step13.imageDataUrl ? <img src={lesson.step13.imageDataUrl} alt="Раскраска" className="mx-auto max-h-56 rounded-xl bg-white object-contain" /> : <p className="rounded-xl bg-white p-4 text-xs text-slate-500">Загрузите раскраску</p>}<p className="rounded-xl bg-violet-50 p-3 text-sm font-bold">{lesson.step13.sentences.find(sentence => sentence.trim()) || 'Здесь появится текст под раскраской'}</p></div>
+    : stepKey === 'step3'
     ? <div className="grid max-w-xs gap-1.5" style={{ gridTemplateColumns: `repeat(${lesson.step3.gridCols}, minmax(0, 1fr))` }}>{lesson.step3.cells.flatMap((row, rowIndex) => row.map((letter, columnIndex) => <span key={`${rowIndex}-${columnIndex}`} className="flex aspect-square items-center justify-center rounded-lg border border-pink-200 bg-white text-xs font-black text-pink-700">{letter}</span>))}</div>
     : stepKey === 'step8'
       ? <div className="grid max-w-xs grid-cols-3 gap-1.5">{lesson.step8.words.map((word, index) => <span key={`${word}-${index}`} className="rounded-lg border border-amber-300 bg-amber-100 px-2 py-3 text-center text-xs font-black text-amber-900">?</span>)}</div>
@@ -343,9 +352,11 @@ function GameContentEditor({ game, lesson, onChange, onSave, onCancel }: GameCon
           const consonantSlots = lesson.step12.consonants.length < 4 ? [...lesson.step12.consonants, ''] : lesson.step12.consonants;
           return <div className="space-y-3 rounded-2xl bg-sky-50/70 p-4"><div><h3 className="text-xs font-black text-sky-900">Настройки игры «Ракета слогов»</h3><p className="mt-1 text-[10px] font-semibold text-slate-500">Сначала ребёнок читает гласные. Затем вводите по одной согласной: каждая сразу создаёт новый уровень и добавляется слева — Т → СТ → ВСТ.</p></div><label className="block text-[10px] font-bold text-slate-600">Гласные в первом столбике<input className={inputClass} value={lesson.step12.vowels.join(', ')} onChange={event => refreshRocket(parseRocketVowels(event.target.value))} placeholder="А, О, У, Ы, Э, Е, Ё, Ю, Я, И" /></label><div className="grid gap-2 sm:grid-cols-2">{consonantSlots.map((letter, index) => <label key={`rocket-consonant-${index}`} className="block rounded-xl bg-white p-2 text-[10px] font-bold text-slate-600">Уровень {index + 2} · добавить слева<input maxLength={1} className={inputClass} value={letter} onChange={event => { const nextLetter = parseRocketConsonants(event.target.value)[0] || ''; const consonants = [...lesson.step12.consonants]; if (index < consonants.length) { if (nextLetter) consonants[index] = nextLetter; else consonants.splice(index, 1); } else if (nextLetter) consonants.push(nextLetter); refreshRocket(lesson.step12.vowels, consonants); }} placeholder="Например, Т" /></label>)}</div><p className="text-[10px] font-semibold text-sky-700">Столбики обновляются сразу после изменения букв. При необходимости их можно подправить вручную ниже; следующее изменение букв снова построит их автоматически.</p><div className="space-y-2">{lesson.step12.stages.map((stage, index) => <label key={`rocket-stage-${index}`} className="block rounded-xl bg-white p-2 text-[10px] font-bold text-slate-600">Ступень {index + 1}{index === 0 ? ' · только гласные' : ` · ${lesson.step12.consonants.slice(0, index).reverse().join('')}`}<input className={inputClass} value={stage.join(', ')} onChange={event => updateConfig({ stages: lesson.step12.stages.map((item, stageIndex) => stageIndex === index ? event.target.value.split(/[,;\s]+/).map(value => value.trim()).filter(Boolean) : item) })} placeholder="Слоги через запятую" /></label>)}</div><p className="text-[10px] font-semibold text-sky-700">Регистр остаётся таким, как его ввёл учитель. В полёте за подтверждённую ступень начисляется 1 балл.</p></div>;
         })()}
+        {stepKey === 'step13' && <ColoringEditor config={lesson.step13} onChange={updateConfig} />}
+        {stepKey === 'step13' && imageError && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-xs font-bold text-rose-600">{imageError}</p>}
         <details className="rounded-2xl border border-pink-200 bg-gradient-to-br from-pink-50 to-violet-50 p-4"><summary className="cursor-pointer text-xs font-black text-pink-700">👀 Предпросмотр для ученика</summary><div className="mt-3 flex flex-col items-center gap-3"><h3 className="text-center text-base font-black text-pink-600">{lesson[stepKey].title}</h3>{preview}</div></details>
       </div>
-      <footer className="flex justify-end gap-2 border-t border-pink-100 bg-slate-50 p-4"><button className={lightButton} onClick={onCancel}>Отмена</button><button className={pinkButton} onClick={onSave}><Check className="h-4 w-4" />Сохранить в урок</button></footer>
+      <footer className="flex justify-end gap-2 border-t border-pink-100 bg-slate-50 p-4"><button className={lightButton} onClick={onCancel}>Отмена</button><button className={pinkButton} onClick={() => { if (stepKey === 'step13' && (!lesson.step13.imageDataUrl || !lesson.step13.regionMapDataUrl || !lesson.step13.sentences.some(sentence => sentence.trim()) || !lesson.step13.regions.some(region => region.enabled) || lesson.step13.regions.some(region => region.enabled && !region.targetColor))) { setImageError('Добавьте картинку и текст, затем задайте правильный цвет каждой включённой области.'); return; } onSave(); }}><Check className="h-4 w-4" />Сохранить в урок</button></footer>
     </section>
   </div>;
 }

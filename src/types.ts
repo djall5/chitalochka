@@ -140,6 +140,24 @@ export interface Step12Config {
   stages: string[][];
 }
 
+export interface ColoringRegion {
+  id: number;
+  targetColor: string;
+  enabled: boolean;
+}
+
+export interface Step13Config {
+  title: string;
+  instruction: string;
+  sentences: string[];
+  palette: string[];
+  imageDataUrl: string;
+  regionMapDataUrl: string;
+  imageWidth: number;
+  imageHeight: number;
+  regions: ColoringRegion[];
+}
+
 export interface ReadingTextPage {
   id: string;
   imageDataUrl: string;
@@ -180,6 +198,7 @@ export interface LessonData {
   step10: Step10Config;
   step11: Step11Config;
   step12: Step12Config;
+  step13: Step13Config;
 }
 
 export type LessonStatus = 'in-progress' | 'completed' | 'repeat';

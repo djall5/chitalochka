@@ -1,5 +1,6 @@
 import { LessonData } from './types';
 import { defaultRocketSyllables } from './utils/rocketSyllables';
+import { defaultColoringStep } from './utils/coloringImage';
 
 export const defaultLessonY: LessonData = {
   id: 'lesson-y',
@@ -102,6 +103,7 @@ export const defaultLessonY: LessonData = {
   step10: { title: '🫙 Заполни банку', instruction: 'Найди букву Й среди остальных и перетащи её в банку. Заглавная и строчная буквы подходят.', targetLetter: 'Й', targetCount: 16 },
   step11: { title: '⚡ Найди слог на время!', instruction: 'Смотри на большой слог и быстро найди его среди карточек.', practiceLetters: 'Й, А, О, И', syllables: ['ЙА', 'ЙО', 'АЙ', 'ОЙ'], targetCount: 4, timeLimit: 30, optionsPerRound: 8 },
   step12: defaultRocketSyllables(),
+  step13: defaultColoringStep(),
 };
 
 export const defaultLessonS: LessonData = {
@@ -195,6 +197,7 @@ export const defaultLessonS: LessonData = {
   step10: { title: '🫙 Заполни банку', instruction: 'Найди букву С среди остальных и перетащи её в банку. Заглавная и строчная буквы подходят.', targetLetter: 'С', targetCount: 16 },
   step11: { title: '⚡ Найди слог на время!', instruction: 'Смотри на большой слог и быстро найди его среди карточек.', practiceLetters: 'С, А, О, У, И', syllables: ['СА', 'СО', 'СУ', 'СИ'], targetCount: 4, timeLimit: 30, optionsPerRound: 8 },
   step12: defaultRocketSyllables(),
+  step13: defaultColoringStep(),
 };
 
 export const PRESET_LESSONS = [defaultLessonY, defaultLessonS];
