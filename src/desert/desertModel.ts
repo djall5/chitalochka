@@ -28,14 +28,15 @@ export const DESERT_CATALOG = [
 ] as const;
 
 export const DESERT_FENCE_LENGTH = 160;
+export const DESERT_ANIMALS = ['rabbit', 'hedgehog', 'bird', 'squirrel', 'fox', 'wolf', 'deer'] as const;
 
 export type DesertItemId = typeof DESERT_CATALOG[number]['id'];
 export type DesertAction =
   | { type: 'buy'; itemId: DesertItemId; quantity?: number }
   | { type: 'water'; cells: number[] }
-  | { type: 'place'; itemId: DesertItemId; x: number; y: number; id: string; rotation?: number };
+  | { type: 'place'; itemId: DesertItemId; x: number; y: number; id: string; rotation?: number; facing?: 'left' | 'right'; mirrored?: boolean; scale?: number };
 
-export interface DesertObject { id: string; itemId: DesertItemId; x: number; y: number; rotation?: number }
+export interface DesertObject { id: string; itemId: DesertItemId; x: number; y: number; rotation?: number; facing?: 'left' | 'right'; mirrored?: boolean; scale?: number }
 export interface DesertState {
   spent: number;
   water: number;
@@ -71,7 +72,10 @@ export function normalizeDesert(value: unknown): DesertState {
     Boolean(object && typeof object.id === 'string' && DESERT_CATALOG.some(item => item.id === object.itemId && item.id !== 'water')
       && Number.isFinite(object.x) && object.x >= 0 && object.x <= 1 && Number.isFinite(object.y) && object.y >= DESERT_GROUND_TOP && object.y <= 1))
       .slice(0, 500).map(object => ({ id: object.id, itemId: object.itemId, x: object.x, y: object.y,
-        ...(object.itemId === 'fence' && Number.isInteger(object.rotation) && object.rotation! >= 0 && object.rotation! < 360 && object.rotation! % 15 === 0 ? { rotation: object.rotation } : {}) })) : [];
+        ...(object.itemId === 'fence' && Number.isInteger(object.rotation) && object.rotation! >= 0 && object.rotation! < 360 && object.rotation! % 15 === 0 ? { rotation: object.rotation } : {}),
+        ...(DESERT_ANIMALS.some(id => id === object.itemId) && (object.facing === 'left' || object.facing === 'right') ? { facing: object.facing } : {}),
+        ...(object.mirrored === true ? { mirrored: true } : {}),
+        ...(typeof object.scale === 'number' && Number.isFinite(object.scale) && object.scale >= 0.5 && object.scale <= 2 ? { scale: object.scale } : {}) })) : [];
   return { spent: Number.isSafeInteger(input.spent) && input.spent! >= 0 ? input.spent! : 0,
     water: Number.isSafeInteger(input.water) && input.water! >= 0 ? input.water! : 0,
     cells, inventory, objects };
@@ -97,7 +101,7 @@ export function canPlaceDesertItem(desert: DesertState, itemId: DesertItemId, x:
   const angle = rotation * Math.PI / 180;
   for (let sample = -4; sample <= 4; sample++) {
     const distance = sample / 4 * DESERT_FENCE_LENGTH / 2;
-    const index = desertCellAt(x + Math.cos(angle) * distance / 1200, y + Math.sin(angle) * distance / 675);
+    const index = desertCellAt(x + Math.cos(angle) * distance / 1200, y);
     if (index === null || desert.cells[index] !== 3) return false;
   }
   return true;
@@ -129,9 +133,14 @@ export function applyDesertAction(current: DesertState, earned: number, action: 
   const index = desertCellAt(action.x, action.y);
   if (!item || item.id === 'water' || index === null || !canPlaceDesertItem(desert, item.id, action.x, action.y, action.rotation ?? 0)) throw new Error(item?.id === 'fence' ? 'Вся секция забора должна стоять на зелёной земле.' : 'Разместить покупку можно только на зелёном участке.');
   if (!desert.inventory[item.id]) throw new Error('Сначала купи предмет в магазине.');
+  if (DESERT_ANIMALS.some(id => id === item.id) && action.facing !== undefined && action.facing !== 'left' && action.facing !== 'right') throw new Error('Некорректное направление животного.');
+  if (action.mirrored !== undefined && typeof action.mirrored !== 'boolean') throw new Error('Некорректное зеркалирование предмета.');
+  if (action.scale !== undefined && (typeof action.scale !== 'number' || !Number.isFinite(action.scale) || action.scale < 0.5 || action.scale > 2)) throw new Error('Некорректный размер предмета.');
   if (!action.id || desert.objects.some(object => object.id === action.id)) throw new Error('Не удалось разместить предмет.');
   if (desert.objects.length >= 500) throw new Error('Мир уже заполнен.');
   return { ...desert,
     inventory: { ...desert.inventory, [item.id]: desert.inventory[item.id]! - 1 },
-    objects: [...desert.objects, { id: action.id, itemId: item.id, x: action.x, y: action.y, ...(item.id === 'fence' ? { rotation: action.rotation ?? 0 } : {}) }] };
+    objects: [...desert.objects, { id: action.id, itemId: item.id, x: action.x, y: action.y, ...(item.id === 'fence' ? { rotation: action.rotation ?? 0 } : {}),
+      ...(DESERT_ANIMALS.some(id => id === item.id) ? { facing: action.facing ?? 'right' } : {}),
+      ...(action.mirrored ? { mirrored: true } : {}), ...(action.scale !== undefined ? { scale: action.scale } : {}) }] };
 }

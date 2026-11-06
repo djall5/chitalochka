@@ -87,6 +87,9 @@ declare
   v_x numeric;
   v_y numeric;
   v_rotation integer;
+  v_facing text;
+  v_mirrored boolean;
+  v_scale numeric;
   v_sample integer;
   v_sample_x numeric;
   v_sample_y numeric;
@@ -173,7 +176,7 @@ begin
       if v_rotation >= 360 or mod(v_rotation, 15) <> 0 then raise exception 'Некорректный поворот забора.'; end if;
       for v_sample in -4..4 loop
         v_sample_x := v_x + cos(radians(v_rotation)) * (v_sample * 20.0 / 1200.0);
-        v_sample_y := v_y + sin(radians(v_rotation)) * (v_sample * 20.0 / 675.0);
+        v_sample_y := v_y;
         if v_sample_x < 0 or v_sample_x >= 1 or v_sample_y < 0.28 or v_sample_y >= 1 then
           raise exception 'Вся секция забора должна стоять на зелёной земле.';
         end if;
@@ -181,13 +184,23 @@ begin
         if (v_cells ->> v_sample_index)::integer <> 3 then raise exception 'Вся секция забора должна стоять на зелёной земле.'; end if;
       end loop;
     end if;
+    if v_item in ('rabbit','hedgehog','bird','squirrel','fox','wolf','deer') then
+      v_facing := coalesce(p_action ->> 'facing', 'right');
+      if v_facing not in ('left', 'right') then raise exception 'Некорректное направление животного.'; end if;
+    end if;
+    if p_action ? 'mirrored' and jsonb_typeof(p_action -> 'mirrored') <> 'boolean' then raise exception 'Некорректное зеркалирование предмета.'; end if;
+    v_mirrored := coalesce((p_action ->> 'mirrored')::boolean, false);
+    if coalesce(p_action ->> 'scale', '1') !~ '^(0\.[5-9][0-9]*|1(\.[0-9]+)?|2(\.0+)?)$' then raise exception 'Некорректный размер предмета.'; end if;
+    v_scale := coalesce((p_action ->> 'scale')::numeric, 1);
     v_id := p_action ->> 'id';
     if v_id is null or v_id !~ '^[a-f0-9-]{36}$' then raise exception 'Некорректный предмет.'; end if;
     if exists (select 1 from jsonb_array_elements(v_objects) as o(object) where object ->> 'id' = v_id) then raise exception 'Предмет уже размещён.'; end if;
     if jsonb_array_length(v_objects) >= 500 then raise exception 'Мир уже заполнен.'; end if;
     v_inventory := jsonb_set(v_inventory, array[v_item], to_jsonb((v_inventory ->> v_item)::integer - 1), false);
     v_objects := v_objects || jsonb_build_array(jsonb_build_object('id', v_id, 'itemId', v_item, 'x', v_x, 'y', v_y) ||
-      case when v_item = 'fence' then jsonb_build_object('rotation', v_rotation) else '{}'::jsonb end);
+      case when v_item = 'fence' then jsonb_build_object('rotation', v_rotation)
+        when v_item in ('rabbit','hedgehog','bird','squirrel','fox','wolf','deer') then jsonb_build_object('facing', v_facing)
+        else '{}'::jsonb end || jsonb_build_object('mirrored', v_mirrored, 'scale', v_scale));
   else raise exception 'Неизвестное действие.';
   end if;
 
