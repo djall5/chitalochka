@@ -86,6 +86,11 @@ declare
   v_stage integer;
   v_x numeric;
   v_y numeric;
+  v_rotation integer;
+  v_sample integer;
+  v_sample_x numeric;
+  v_sample_y numeric;
+  v_sample_index integer;
   v_id text;
   v_seen integer[] := '{}'::integer[];
   v_changed integer := 0;
@@ -122,7 +127,9 @@ begin
     v_price := case v_item when 'water' then 20 when 'flower' then 20 when 'purpleFlower' then 25
       when 'bush' then 35 when 'tree' then 70 when 'willow' then 85
       when 'mushroom' then 25 when 'butterfly' then 35 when 'bee' then 35
-      when 'rabbit' then 60 when 'hedgehog' then 45 when 'bird' then 50 when 'ladybug' then 25 else null end;
+      when 'rabbit' then 60 when 'hedgehog' then 45 when 'bird' then 50 when 'ladybug' then 25
+      when 'fence' then 35 when 'woodenCottage' then 120 when 'treehouse' then 160 when 'stoneCottage' then 180
+      when 'squirrel' then 45 when 'fox' then 80 when 'wolf' then 100 when 'deer' then 110 else null end;
     if v_price is null then raise exception 'Неизвестный предмет.'; end if;
     if coalesce(p_action ->> 'quantity', '1') !~ '^([1-9]|1[0-9]|20)$' then raise exception 'Выбери от 1 до 20 предметов.'; end if;
     v_quantity := coalesce((p_action ->> 'quantity')::integer, 1);
@@ -152,7 +159,7 @@ begin
     if v_changed = 0 then raise exception 'Нет воды или участок уже зелёный.'; end if;
   elsif p_action ->> 'type' = 'place' then
     v_item := p_action ->> 'itemId';
-    if v_item not in ('flower','purpleFlower','bush','tree','willow','mushroom','butterfly','bee','rabbit','hedgehog','bird','ladybug') then raise exception 'Неизвестный предмет.'; end if;
+    if v_item not in ('flower','purpleFlower','bush','tree','willow','mushroom','butterfly','bee','rabbit','hedgehog','bird','ladybug','fence','woodenCottage','treehouse','stoneCottage','squirrel','fox','wolf','deer') then raise exception 'Неизвестный предмет.'; end if;
     if coalesce((v_inventory ->> v_item)::integer, 0) < 1 then raise exception 'Предмет не куплен.'; end if;
     if (p_action ->> 'x') !~ '^(0(\.[0-9]+)?|1(\.0+)?)$' or (p_action ->> 'y') !~ '^(0(\.[0-9]+)?|1(\.0+)?)$' then raise exception 'Некорректное место.'; end if;
     v_x := (p_action ->> 'x')::numeric;
@@ -160,12 +167,27 @@ begin
     if v_x >= 1 or v_y < 0.28 or v_y >= 1 then raise exception 'Выбери участок земли.'; end if;
     v_index := least(3, floor((v_y - 0.28) / 0.72 * 4)::integer) * 12 + floor(v_x * 12)::integer;
     if (v_cells ->> v_index)::integer <> 3 then raise exception 'Разместить предмет можно только на зелёном участке.'; end if;
+    if v_item = 'fence' then
+      if coalesce(p_action ->> 'rotation', '0') !~ '^[0-9]{1,3}$' then raise exception 'Некорректный поворот забора.'; end if;
+      v_rotation := coalesce((p_action ->> 'rotation')::integer, 0);
+      if v_rotation >= 360 or mod(v_rotation, 15) <> 0 then raise exception 'Некорректный поворот забора.'; end if;
+      for v_sample in -4..4 loop
+        v_sample_x := v_x + cos(radians(v_rotation)) * (v_sample * 20.0 / 1200.0);
+        v_sample_y := v_y + sin(radians(v_rotation)) * (v_sample * 20.0 / 675.0);
+        if v_sample_x < 0 or v_sample_x >= 1 or v_sample_y < 0.28 or v_sample_y >= 1 then
+          raise exception 'Вся секция забора должна стоять на зелёной земле.';
+        end if;
+        v_sample_index := least(3, floor((v_sample_y - 0.28) / 0.72 * 4)::integer) * 12 + floor(v_sample_x * 12)::integer;
+        if (v_cells ->> v_sample_index)::integer <> 3 then raise exception 'Вся секция забора должна стоять на зелёной земле.'; end if;
+      end loop;
+    end if;
     v_id := p_action ->> 'id';
     if v_id is null or v_id !~ '^[a-f0-9-]{36}$' then raise exception 'Некорректный предмет.'; end if;
     if exists (select 1 from jsonb_array_elements(v_objects) as o(object) where object ->> 'id' = v_id) then raise exception 'Предмет уже размещён.'; end if;
     if jsonb_array_length(v_objects) >= 500 then raise exception 'Мир уже заполнен.'; end if;
     v_inventory := jsonb_set(v_inventory, array[v_item], to_jsonb((v_inventory ->> v_item)::integer - 1), false);
-    v_objects := v_objects || jsonb_build_array(jsonb_build_object('id', v_id, 'itemId', v_item, 'x', v_x, 'y', v_y));
+    v_objects := v_objects || jsonb_build_array(jsonb_build_object('id', v_id, 'itemId', v_item, 'x', v_x, 'y', v_y) ||
+      case when v_item = 'fence' then jsonb_build_object('rotation', v_rotation) else '{}'::jsonb end);
   else raise exception 'Неизвестное действие.';
   end if;
 

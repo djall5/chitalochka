@@ -17,15 +17,25 @@ export const DESERT_CATALOG = [
   { id: 'hedgehog', name: 'Ёжик', price: 45, category: 'life' },
   { id: 'bird', name: 'Птица', price: 50, category: 'life' },
   { id: 'ladybug', name: 'Божья коровка', price: 25, category: 'life' },
+  { id: 'fence', name: 'Секция забора', price: 35, category: 'fences' },
+  { id: 'woodenCottage', name: 'Деревянный домик', price: 120, category: 'buildings' },
+  { id: 'treehouse', name: 'Домик на дереве', price: 160, category: 'buildings' },
+  { id: 'stoneCottage', name: 'Каменный домик', price: 180, category: 'buildings' },
+  { id: 'squirrel', name: 'Белка', price: 45, category: 'life' },
+  { id: 'fox', name: 'Лиса', price: 80, category: 'life' },
+  { id: 'wolf', name: 'Волк', price: 100, category: 'life' },
+  { id: 'deer', name: 'Олень', price: 110, category: 'life' },
 ] as const;
+
+export const DESERT_FENCE_LENGTH = 160;
 
 export type DesertItemId = typeof DESERT_CATALOG[number]['id'];
 export type DesertAction =
   | { type: 'buy'; itemId: DesertItemId; quantity?: number }
   | { type: 'water'; cells: number[] }
-  | { type: 'place'; itemId: DesertItemId; x: number; y: number; id: string };
+  | { type: 'place'; itemId: DesertItemId; x: number; y: number; id: string; rotation?: number };
 
-export interface DesertObject { id: string; itemId: DesertItemId; x: number; y: number }
+export interface DesertObject { id: string; itemId: DesertItemId; x: number; y: number; rotation?: number }
 export interface DesertState {
   spent: number;
   water: number;
@@ -59,7 +69,9 @@ export function normalizeDesert(value: unknown): DesertState {
   }
   const objects = Array.isArray(input.objects) ? input.objects.filter((object): object is DesertObject =>
     Boolean(object && typeof object.id === 'string' && DESERT_CATALOG.some(item => item.id === object.itemId && item.id !== 'water')
-      && Number.isFinite(object.x) && object.x >= 0 && object.x <= 1 && Number.isFinite(object.y) && object.y >= DESERT_GROUND_TOP && object.y <= 1)).slice(0, 500) : [];
+      && Number.isFinite(object.x) && object.x >= 0 && object.x <= 1 && Number.isFinite(object.y) && object.y >= DESERT_GROUND_TOP && object.y <= 1))
+      .slice(0, 500).map(object => ({ id: object.id, itemId: object.itemId, x: object.x, y: object.y,
+        ...(object.itemId === 'fence' && Number.isInteger(object.rotation) && object.rotation! >= 0 && object.rotation! < 360 && object.rotation! % 15 === 0 ? { rotation: object.rotation } : {}) })) : [];
   return { spent: Number.isSafeInteger(input.spent) && input.spent! >= 0 ? input.spent! : 0,
     water: Number.isSafeInteger(input.water) && input.water! >= 0 ? input.water! : 0,
     cells, inventory, objects };
@@ -74,6 +86,21 @@ export function desertCellAt(x: number, y: number): number | null {
   const col = Math.floor(x * DESERT_COLS);
   const row = Math.floor((y - DESERT_GROUND_TOP) / (1 - DESERT_GROUND_TOP) * DESERT_ROWS);
   return Math.min(DESERT_ROWS - 1, row) * DESERT_COLS + col;
+}
+
+export function canPlaceDesertItem(desert: DesertState, itemId: DesertItemId, x: number, y: number, rotation = 0): boolean {
+  if (itemId === 'water') return false;
+  const center = desertCellAt(x, y);
+  if (center === null || desert.cells[center] !== 3) return false;
+  if (itemId !== 'fence') return true;
+  if (!Number.isInteger(rotation) || rotation < 0 || rotation >= 360 || rotation % 15 !== 0) return false;
+  const angle = rotation * Math.PI / 180;
+  for (let sample = -4; sample <= 4; sample++) {
+    const distance = sample / 4 * DESERT_FENCE_LENGTH / 2;
+    const index = desertCellAt(x + Math.cos(angle) * distance / 1200, y + Math.sin(angle) * distance / 675);
+    if (index === null || desert.cells[index] !== 3) return false;
+  }
+  return true;
 }
 
 export function applyDesertAction(current: DesertState, earned: number, action: DesertAction): DesertState {
@@ -100,10 +127,11 @@ export function applyDesertAction(current: DesertState, earned: number, action: 
   }
   const item = DESERT_CATALOG.find(entry => entry.id === action.itemId);
   const index = desertCellAt(action.x, action.y);
-  if (!item || item.id === 'water' || index === null || desert.cells[index] !== 3) throw new Error('Разместить покупку можно только на зелёном участке.');
+  if (!item || item.id === 'water' || index === null || !canPlaceDesertItem(desert, item.id, action.x, action.y, action.rotation ?? 0)) throw new Error(item?.id === 'fence' ? 'Вся секция забора должна стоять на зелёной земле.' : 'Разместить покупку можно только на зелёном участке.');
   if (!desert.inventory[item.id]) throw new Error('Сначала купи предмет в магазине.');
   if (!action.id || desert.objects.some(object => object.id === action.id)) throw new Error('Не удалось разместить предмет.');
+  if (desert.objects.length >= 500) throw new Error('Мир уже заполнен.');
   return { ...desert,
     inventory: { ...desert.inventory, [item.id]: desert.inventory[item.id]! - 1 },
-    objects: [...desert.objects, { id: action.id, itemId: item.id, x: action.x, y: action.y }] };
+    objects: [...desert.objects, { id: action.id, itemId: item.id, x: action.x, y: action.y, ...(item.id === 'fence' ? { rotation: action.rotation ?? 0 } : {}) }] };
 }

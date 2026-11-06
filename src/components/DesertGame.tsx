@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Droplets, ShoppingBag, Sprout, X } from 'lucide-react';
-import { applyDesertAction, DESERT_CATALOG, DESERT_CELL_COUNT, DESERT_COLS, DESERT_GROUND_TOP, DESERT_ROWS, DesertAction, DesertItemId, DesertState, desertBalance, desertCellAt } from '../desert/desertModel';
+import { applyDesertAction, canPlaceDesertItem, DESERT_CATALOG, DESERT_CELL_COUNT, DESERT_COLS, DESERT_GROUND_TOP, DESERT_ROWS, DesertAction, DesertItemId, DesertState, desertBalance, desertCellAt } from '../desert/desertModel';
+import './desertMotion.css';
 
 type CharacterDirection = 'front' | 'back' | 'side' | 'threeQuarter';
 export type CharacterImages = Partial<Record<CharacterDirection | 'watering', string>>;
@@ -15,7 +16,7 @@ type Props = {
 };
 
 const assets = { sand: 'desert/sand.png', soil: 'desert/soil.png', sprouts: 'desert/sprouts.png', green: 'desert/green.png' };
-const itemSprites: Partial<Record<DesertItemId, { file: string; width: number; tall?: boolean }>> = {
+const itemSprites: Partial<Record<DesertItemId, { file: string; width: number; tall?: boolean; height?: number }>> = {
   flower: { file: 'flower.png', width: 68 },
   purpleFlower: { file: 'purple-flower.png', width: 68 },
   bush: { file: 'bush.png', width: 88 },
@@ -28,12 +29,26 @@ const itemSprites: Partial<Record<DesertItemId, { file: string; width: number; t
   hedgehog: { file: 'hedgehog.png', width: 70 },
   bird: { file: 'bird.png', width: 60 },
   ladybug: { file: 'ladybug.png', width: 48 },
+  fence: { file: 'fence.png', width: 160 },
+  woodenCottage: { file: 'wooden-cottage.png', width: 220, tall: true, height: 235 },
+  treehouse: { file: 'treehouse.png', width: 230, tall: true, height: 285 },
+  stoneCottage: { file: 'stone-cottage.png', width: 225, tall: true, height: 245 },
+  squirrel: { file: 'squirrel.png', width: 62 },
+  fox: { file: 'fox.png', width: 105 },
+  wolf: { file: 'wolf.png', width: 120 },
+  deer: { file: 'deer.png', width: 115 },
 };
 const itemSpriteUrl = (file: string) => `${import.meta.env.BASE_URL}desert/items/${file}`;
-function itemSpriteStyle(sprite: { width: number; tall?: boolean }, x: number, y: number): React.CSSProperties {
+const movingWildlife = new Set<DesertItemId>(['fox', 'wolf', 'squirrel', 'deer']);
+const shopSections = [
+  { id: 'all', label: 'Все' }, { id: 'water', label: 'Вода' }, { id: 'plants', label: 'Растения' },
+  { id: 'life', label: 'Жители' }, { id: 'buildings', label: 'Домики' }, { id: 'fences', label: 'Заборы' },
+] as const;
+function itemSpriteStyle(sprite: { width: number; tall?: boolean; height?: number }, x: number, y: number, rotation = 0): React.CSSProperties {
   return { left: `${x * 100}%`, top: `${y * 100}%`,
     width: sprite.tall ? 'auto' : `clamp(38px, ${(sprite.width / sceneWidth * 100).toFixed(1)}vw, ${sprite.width}px)`,
-    height: sprite.tall ? 'min(38vh, 270px)' : undefined };
+    height: sprite.tall ? `min(38vh, ${sprite.height || 270}px)` : undefined,
+    transform: `translate(-50%, -100%) rotate(${rotation}deg)`, transformOrigin: '50% 100%' };
 }
 const sampleCharacter = `${import.meta.env.BASE_URL}characters/sample-boy/`;
 const sceneWidth = 1200;
@@ -71,6 +86,8 @@ export function DesertGame({ studentName, earned, desert, character, onAction, o
   const [world, setWorld] = useState(desert);
   const [selected, setSelected] = useState<DesertItemId>('water');
   const [shopOpen, setShopOpen] = useState(false);
+  const [shopSection, setShopSection] = useState<(typeof shopSections)[number]['id']>('all');
+  const [fenceRotation, setFenceRotation] = useState(0);
   const [hoverPoint, setHoverPoint] = useState<{ x: number; y: number } | null>(null);
   const [placementPoint, setPlacementPoint] = useState<{ x: number; y: number } | null>(null);
   const [waterQuantity, setWaterQuantity] = useState(1);
@@ -112,8 +129,7 @@ export function DesertGame({ studentName, earned, desert, character, onAction, o
   const selectedItem = DESERT_CATALOG.find(item => item.id === selected)!;
   const inventoryCount = world.inventory[selected] || 0;
   const previewPoint = selected !== 'water' && inventoryCount > 0 && !shopOpen ? placementPoint ?? hoverPoint : null;
-  const previewCell = previewPoint ? desertCellAt(previewPoint.x, previewPoint.y) : null;
-  const previewValid = previewCell !== null && world.cells[previewCell] === 3;
+  const previewValid = previewPoint !== null && canPlaceDesertItem(world, selected, previewPoint.x, previewPoint.y, selected === 'fence' ? fenceRotation : 0);
 
   function scenePoint(event: React.PointerEvent<HTMLDivElement>) {
     const bounds = sceneRef.current?.getBoundingClientRect();
@@ -159,8 +175,7 @@ export function DesertGame({ studentName, earned, desert, character, onAction, o
     } else {
       if (!inventoryCount) { setMessage('Сначала купи предмет в магазине.'); return; }
       setPlacementPoint(point);
-      const index = desertCellAt(point.x, point.y);
-      setMessage(index !== null && world.cells[index] === 3 ? 'Посмотри на предмет и нажми «Разместить здесь».' : 'Здесь пока нельзя разместить предмет. Выбери зелёный участок.');
+      setMessage(canPlaceDesertItem(world, selected, point.x, point.y, selected === 'fence' ? fenceRotation : 0) ? 'Посмотри на предмет и нажми «Разместить здесь».' : selected === 'fence' ? 'Вся секция забора должна стоять на зелёной земле.' : 'Здесь пока нельзя разместить предмет. Выбери зелёный участок.');
     }
   }
 
@@ -213,7 +228,7 @@ export function DesertGame({ studentName, earned, desert, character, onAction, o
   function confirmPlacement() {
     if (!placementPoint || !previewValid || selected === 'water' || !inventoryCount || busy) return;
     moveHero(placementPoint.x, placementPoint.y);
-    void commit({ type: 'place', itemId: selected, id: crypto.randomUUID(), ...placementPoint });
+    void commit({ type: 'place', itemId: selected, id: crypto.randomUUID(), ...placementPoint, ...(selected === 'fence' ? { rotation: fenceRotation } : {}) });
     setPlacementPoint(null);
     setHoverPoint(null);
   }
@@ -242,27 +257,28 @@ export function DesertGame({ studentName, earned, desert, character, onAction, o
       {world.objects.map(object => {
         const item = DESERT_CATALOG.find(entry => entry.id === object.itemId);
         const sprite = itemSprites[object.itemId];
-        return item && sprite && <img key={object.id} src={itemSpriteUrl(sprite.file)} alt={item.name} draggable={false} className="pointer-events-none absolute -translate-x-1/2 -translate-y-full object-contain drop-shadow-lg" style={itemSpriteStyle(sprite, object.x, object.y)} />;
+        return item && sprite && <img key={object.id} src={itemSpriteUrl(sprite.file)} alt={item.name} draggable={false} className={`pointer-events-none absolute object-contain drop-shadow-lg ${movingWildlife.has(object.itemId) ? 'desert-wildlife-idle' : ''}`} style={{ ...itemSpriteStyle(sprite, object.x, object.y, object.rotation || 0), ...(movingWildlife.has(object.itemId) ? { animationDelay: `${(object.id.charCodeAt(0) % 9) * -0.3}s` } : {}) }} />;
       })}
-      {previewPoint && <img src={itemSpriteUrl(itemSprites[selected]!.file)} alt={`Предпросмотр: ${selectedItem.name}`} draggable={false} className={`pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-full object-contain drop-shadow-xl ${previewValid ? 'opacity-75' : 'opacity-35 grayscale'}`} style={itemSpriteStyle(itemSprites[selected]!, previewPoint.x, previewPoint.y)} />}
+      {previewPoint && <img src={itemSpriteUrl(itemSprites[selected]!.file)} alt={`Предпросмотр: ${selectedItem.name}`} draggable={false} className={`pointer-events-none absolute z-20 object-contain drop-shadow-xl ${previewValid ? 'opacity-75' : 'opacity-35 grayscale'}`} style={itemSpriteStyle(itemSprites[selected]!, previewPoint.x, previewPoint.y, selected === 'fence' ? fenceRotation : 0)} />}
       <img src={imageForDirection} alt={showWateringImage ? 'Герой поливает пустыню' : 'Герой озеленяет пустыню'} draggable={false} className="pointer-events-none absolute z-10 h-[min(26vh,180px)] w-auto object-contain drop-shadow-xl transition-[left,top] duration-700 ease-out" style={{ left: `${hero.x * 100}%`, top: `${hero.y * 100}%`, transform: `translate(-50%, -100%) ${hero.facesLeft && (showWateringImage || direction === 'side') ? 'scaleX(-1)' : ''}` }} />
       <div className="pointer-events-none absolute bottom-2 left-1/2 max-w-[90%] -translate-x-1/2 rounded-2xl bg-slate-950/70 px-4 py-2 text-center text-xs font-bold text-white sm:text-sm" role="status">{message}</div>
     </div>
 
-    {selected !== 'water' && placementPoint && <div className="absolute right-3 top-16 z-20 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-2 rounded-2xl bg-white/95 p-2 text-xs font-bold text-slate-800 shadow-xl sm:right-5 sm:top-20 sm:text-sm"><span className={previewValid ? 'text-emerald-700' : 'text-rose-600'}>{previewValid ? '✓ Подходит для посадки' : 'Выбери зелёный участок'}</span><button disabled={!previewValid || busy} onClick={confirmPlacement} className="rounded-xl bg-emerald-600 px-3 py-2 font-black text-white disabled:bg-slate-300">Разместить здесь</button><button onClick={() => { setPlacementPoint(null); setHoverPoint(null); }} className="rounded-xl bg-slate-100 px-3 py-2">Отмена</button></div>}
+    {selected !== 'water' && placementPoint && <div className="absolute right-3 top-16 z-20 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-2 rounded-2xl bg-white/95 p-2 text-xs font-bold text-slate-800 shadow-xl sm:right-5 sm:top-20 sm:text-sm"><span className={previewValid ? 'text-emerald-700' : 'text-rose-600'}>{previewValid ? '✓ Можно разместить' : selected === 'fence' ? 'Весь забор должен быть на зелени' : 'Выбери зелёный участок'}</span>{selected === 'fence' && <div className="flex items-center gap-1" aria-label="Поворот забора"><button aria-label="Повернуть забор влево на 15 градусов" onClick={() => setFenceRotation(value => (value + 345) % 360)} className="rounded-xl bg-amber-100 px-2 py-2 text-lg">↶</button><span className="min-w-9 text-center">{fenceRotation}°</span><button aria-label="Повернуть забор вправо на 15 градусов" onClick={() => setFenceRotation(value => (value + 15) % 360)} className="rounded-xl bg-amber-100 px-2 py-2 text-lg">↷</button></div>}<button disabled={!previewValid || busy} onClick={confirmPlacement} className="rounded-xl bg-emerald-600 px-3 py-2 font-black text-white disabled:bg-slate-300">Разместить здесь</button><button onClick={() => { setPlacementPoint(null); setHoverPoint(null); }} className="rounded-xl bg-slate-100 px-3 py-2">Отмена</button></div>}
 
     <footer className="z-10 flex items-center justify-between gap-2 bg-[#153b3b] px-3 py-2 sm:px-5"><div className="flex min-w-0 items-center gap-1 text-xs font-bold sm:text-sm">{selected === 'water' ? <Droplets size={18} className="shrink-0 text-sky-300" /> : <img src={itemSpriteUrl(itemSprites[selected]!.file)} alt="" className="h-7 w-7 shrink-0 object-contain" />}<span>{selectedItem.name} {selected === 'water' ? `· в лейке ${world.water}` : `· в рюкзаке ${inventoryCount}`}</span></div><div className="flex gap-2"><button onClick={() => setSelected('water')} className={`rounded-xl px-3 py-2 text-xs font-black ${selected === 'water' ? 'bg-sky-500' : 'bg-white/15'}`}><Droplets size={16} className="inline" /> Поливать</button><button onClick={() => setShopOpen(true)} className="rounded-xl bg-amber-400 px-3 py-2 text-xs font-black text-amber-950"><ShoppingBag size={16} className="inline" /> Магазин</button></div></footer>
 
     {shopOpen && <div className="absolute inset-0 z-20 flex items-end justify-center bg-slate-950/60 p-2 sm:items-center" onPointerDown={event => event.stopPropagation()}>
       <section className="max-h-[86dvh] w-full max-w-3xl overflow-y-auto rounded-3xl bg-white p-4 text-slate-800 shadow-2xl sm:p-6" aria-label="Магазин пустыни">
         <div className="flex items-center justify-between"><div><h2 className="text-xl font-black">Магазин оазиса</h2><p className="text-xs font-bold text-slate-500">Доступно ⭐ {balance}</p></div><button onClick={() => setShopOpen(false)} aria-label="Закрыть магазин" className="rounded-xl bg-slate-100 p-2"><X size={20} /></button></div>
-        <p className="mt-2 text-xs font-semibold text-slate-500">Воду используй на песке. Растения и жителей можно разместить только на зелёной земле.</p>
+        <p className="mt-2 text-xs font-semibold text-slate-500">Воду используй на песке. Предметы можно разместить на зелёной земле.</p>
         <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border-2 border-sky-200 bg-sky-50 p-3">
           <div><p className="text-sm font-black text-sky-900">💧 Сколько наборов воды купить?</p><p className="text-xs font-semibold text-sky-700">1 набор = 4 полива за ⭐ 20</p></div>
           <div className="flex items-center gap-2"><button aria-label="Уменьшить количество воды" disabled={waterQuantity <= 1} onClick={() => setWaterQuantity(value => value - 1)} className="h-9 w-9 rounded-xl bg-white text-xl font-black text-sky-800 disabled:opacity-40">−</button><span className="min-w-6 text-center text-lg font-black text-sky-900" aria-label={`${waterQuantity} ${countWord(waterQuantity, 'набор', 'набора', 'наборов')} воды`}>{waterQuantity}</span><button aria-label="Увеличить количество воды" disabled={waterQuantity >= 20 || (waterQuantity + 1) * 20 > balance} onClick={() => setWaterQuantity(value => value + 1)} className="h-9 w-9 rounded-xl bg-white text-xl font-black text-sky-800 disabled:opacity-40">+</button></div>
           <p className="w-full text-xs font-black text-sky-900">Итого: {waterQuantity * 4} {countWord(waterQuantity * 4, 'полив', 'полива', 'поливов')} за ⭐ {waterQuantity * 20}</p>
         </div>
-        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">{DESERT_CATALOG.map(item => <div key={item.id} className="rounded-2xl border-2 border-emerald-100 bg-emerald-50 p-3 text-center">
+        <div className="mt-3 flex flex-wrap gap-1.5" aria-label="Разделы магазина">{shopSections.map(section => <button key={section.id} onClick={() => setShopSection(section.id)} className={`rounded-full px-3 py-1.5 text-xs font-black ${shopSection === section.id ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-800'}`}>{section.label}</button>)}</div>
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">{DESERT_CATALOG.filter(item => shopSection === 'all' || item.category === shopSection).map(item => <div key={item.id} className="rounded-2xl border-2 border-emerald-100 bg-emerald-50 p-3 text-center">
           <div className="flex h-20 items-center justify-center" aria-hidden="true">{item.id === 'water' ? <Droplets size={42} className="text-sky-500" /> : <img src={itemSpriteUrl(itemSprites[item.id]!.file)} alt="" loading="lazy" className="h-full w-full object-contain" />}</div><div className="mt-1 text-sm font-black">{item.name}</div>
           <div className="text-xs font-bold text-amber-700">⭐ {item.id === 'water' ? item.price * waterQuantity : item.price}{item.id === 'water' ? ` · ${item.amount * waterQuantity} ${countWord(item.amount * waterQuantity, 'полив', 'полива', 'поливов')}` : ''}</div>
           <button disabled={busy || balance < item.price * (item.id === 'water' ? waterQuantity : 1)} onClick={() => { setSelected(item.id); setPlacementPoint(null); setHoverPoint(null); void commit({ type: 'buy', itemId: item.id, quantity: item.id === 'water' ? waterQuantity : 1 }); }} className="mt-2 w-full rounded-xl bg-emerald-600 px-2 py-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300">{item.id === 'water' ? `Купить ${waterQuantity} ${countWord(waterQuantity, 'набор', 'набора', 'наборов')}` : 'Купить'}</button>
