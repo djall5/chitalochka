@@ -100,8 +100,8 @@ export function ColoringEditor({ config, onChange }: Props) {
   const configured = enabled.filter(region => region.targetColor);
 
   return <div className="space-y-3 rounded-2xl bg-pink-50/60 p-4">
-    <p className="text-xs font-bold text-pink-700">Загрузите контурную картинку с замкнутыми линиями. Сайт найдёт области для раскрашивания.</p>
-    <label className="inline-flex cursor-pointer rounded-xl bg-white px-4 py-2 text-xs font-black text-pink-700 ring-1 ring-pink-200">{busy ? 'Обрабатываем…' : 'Загрузить PNG или JPG'}<input type="file" accept="image/png,image/jpeg" disabled={busy} className="hidden" onChange={event => { void upload(event.target.files?.[0]); event.currentTarget.value = ''; }} /></label>
+    <p className="text-xs font-bold text-pink-700">Загрузите контурную картинку с замкнутыми линиями. SVG обрабатывается в повышенном разрешении, поэтому тонкие контуры будут читаться лучше.</p>
+    <label className="inline-flex cursor-pointer rounded-xl bg-white px-4 py-2 text-xs font-black text-pink-700 ring-1 ring-pink-200">{busy ? 'Обрабатываем…' : 'Загрузить PNG, JPG или SVG'}<input type="file" accept="image/png,image/jpeg,image/svg+xml,.svg" disabled={busy} className="hidden" onChange={event => { void upload(event.target.files?.[0]); event.currentTarget.value = ''; }} /></label>
     {config.imageDataUrl && <>
       <div className="flex flex-wrap gap-2">{toolButton('answer', 'Задать цвет')}{toolButton('exclude', 'Включить / исключить')}{toolButton('merge', 'Объединить две области')}{toolButton('repair', 'Соединить линию')}</div>
       <p className="text-[11px] font-semibold text-slate-600">{tool === 'merge' ? firstRegion ? 'Нажмите вторую область.' : 'Нажмите первую область.' : tool === 'repair' ? firstPoint ? 'Нажмите конец недостающей линии.' : 'Нажмите начало недостающей линии.' : tool === 'exclude' ? 'Нажмите область, чтобы исключить или вернуть её.' : 'Выберите цвет и нажмите область на рисунке.'}</p>

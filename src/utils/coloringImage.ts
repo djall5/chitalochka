@@ -2,6 +2,7 @@ import type { MouseEvent } from 'react';
 import { ColoringRegion, Step13Config } from '../types';
 
 const MAX_SIDE = 640;
+const MAX_SVG_SIDE = 960;
 const MIN_AREA = 32;
 
 export function defaultColoringStep(): Step13Config {
@@ -23,8 +24,10 @@ export async function imageFromDataUrl(dataUrl: string): Promise<HTMLImageElemen
 }
 
 export async function loadColoringFile(file: File): Promise<string> {
-  if (!['image/png', 'image/jpeg'].includes(file.type)) throw new Error('Загрузите PNG или JPG.');
+  const isSvg = file.type === 'image/svg+xml' || file.name.toLocaleLowerCase().endsWith('.svg');
+  if (!['image/png', 'image/jpeg'].includes(file.type) && !isSvg) throw new Error('Загрузите PNG, JPG или SVG.');
   if (file.size > 12 * 1024 * 1024) throw new Error('Картинка должна быть меньше 12 МБ.');
+  if (isSvg) return rasterizeSvg(file);
   const bitmap = await createImageBitmap(file);
   try {
     const scale = Math.min(1, MAX_SIDE / Math.max(bitmap.width, bitmap.height));
@@ -36,6 +39,31 @@ export async function loadColoringFile(file: File): Promise<string> {
     context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
     return canvas.toDataURL('image/png');
   } finally { bitmap.close(); }
+}
+
+/**
+ * SVG keeps its original clean lines while loading.  The colouring game works
+ * with pixels, so we rasterise it once at a larger size before finding regions.
+ */
+async function rasterizeSvg(file: File): Promise<string> {
+  const markup = await file.text();
+  if (!/<svg[\s>]/i.test(markup)) throw new Error('Файл не похож на SVG-рисунок.');
+  const objectUrl = URL.createObjectURL(new Blob([markup], { type: 'image/svg+xml' }));
+  try {
+    const image = new Image();
+    image.src = objectUrl;
+    await image.decode();
+    const longestSide = Math.max(image.naturalWidth, image.naturalHeight);
+    if (!longestSide) throw new Error('Не удалось определить размер SVG.');
+    const scale = MAX_SVG_SIDE / longestSide;
+    const canvas = canvasOf(Math.max(1, Math.round(image.naturalWidth * scale)), Math.max(1, Math.round(image.naturalHeight * scale)));
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) throw new Error('Не удалось подготовить SVG.');
+    context.fillStyle = '#fff';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/png');
+  } finally { URL.revokeObjectURL(objectUrl); }
 }
 
 export async function segmentColoringImage(imageDataUrl: string): Promise<Pick<Step13Config, 'regionMapDataUrl' | 'imageWidth' | 'imageHeight' | 'regions'>> {
