@@ -854,7 +854,7 @@ export const LessonEditor: React.FC<Props> = ({
         {/* TAB: STEP 4 (Drawing) */}
         {activeTab === 'step4' && (
           <div className="space-y-4">
-            <DrawingPagesEditor config={data.step4} onChange={drawingPages => setData(previous => ({ ...previous, step4: { ...previous.step4, drawingPages } }))} />
+            <DrawingPagesEditor config={data.step4} onChange={drawingPages => setData(previous => ({ ...previous, step4: { ...previous.step4, drawingPages } }))} onLayoutChange={drawingLayout => setData(previous => ({ ...previous, step4: { ...previous.step4, drawingLayout } }))} />
             <div>
               <label className="block text-xs font-bold text-slate-600 mb-1">
                 Заголовок

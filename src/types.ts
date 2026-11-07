@@ -43,6 +43,7 @@ export interface Step4Config {
   promptWord?: string;
   paletteColors: string[];
   drawingPages?: { backgroundImageDataUrl?: string }[];
+  drawingLayout?: 'tabs' | 'side-by-side';
 }
 
 export interface WordFillItem {

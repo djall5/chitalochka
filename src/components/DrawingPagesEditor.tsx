@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import type { Step4Config } from '../types';
 
-type Props = { config: Step4Config; onChange: (pages: NonNullable<Step4Config['drawingPages']>) => void };
+type Props = { config: Step4Config; onChange: (pages: NonNullable<Step4Config['drawingPages']>) => void; onLayoutChange: (layout: NonNullable<Step4Config['drawingLayout']>) => void };
 
-export function DrawingPagesEditor({ config, onChange }: Props) {
+export function DrawingPagesEditor({ config, onChange, onLayoutChange }: Props) {
   const [error, setError] = useState('');
   const pages = (config.drawingPages?.length ? config.drawingPages : [{}]).slice(0, 3);
 
@@ -28,6 +28,7 @@ export function DrawingPagesEditor({ config, onChange }: Props) {
 
   return <div className="space-y-3 rounded-2xl bg-pink-50/60 p-4">
     <h3 className="text-xs font-black text-pink-700">Экраны для рисования · {pages.length} из 3</h3>
+    <fieldset className="flex flex-wrap items-center gap-3 text-xs font-bold text-slate-700"><legend className="mb-1">Как показать экраны ребёнку</legend><label className="flex cursor-pointer items-center gap-1"><input type="radio" name="drawing-layout" checked={config.drawingLayout === 'tabs'} onChange={() => onLayoutChange('tabs')} /> По одному, с переключением</label><label className="flex cursor-pointer items-center gap-1"><input type="radio" name="drawing-layout" checked={config.drawingLayout !== 'tabs'} onChange={() => onLayoutChange('side-by-side')} /> Рядом на одном экране</label></fieldset>
     {pages.map((page, index) => <div key={index} className="flex flex-wrap items-center gap-2 rounded-xl bg-white p-2 text-xs font-bold text-slate-600">
       <span className="min-w-16">Экран {index + 1}</span>
       {page.backgroundImageDataUrl && <img src={page.backgroundImageDataUrl} alt={`Подложка экрана ${index + 1}`} className="h-12 w-14 rounded border object-contain" />}
