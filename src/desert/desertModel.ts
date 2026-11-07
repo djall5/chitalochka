@@ -35,6 +35,8 @@ export const DESERT_CATALOG = [
 export const DESERT_FENCE_LENGTH = 160;
 export const DESERT_ANIMALS = ['rabbit', 'hedgehog', 'bird', 'squirrel', 'fox', 'wolf', 'deer'] as const;
 export const DESERT_PATHS = ['stonePathThree', 'stonePathTwo', 'stonePathOne'] as const;
+export const DESERT_RETIRED_PATHS = ['stonePathThree', 'stonePathTwo'] as const;
+export const DESERT_SHOP_CATALOG = DESERT_CATALOG.filter(item => !DESERT_RETIRED_PATHS.some(id => id === item.id));
 export const DESERT_WATERWAYS = ['stream', 'pond'] as const;
 export const DESERT_FLAT_ITEMS = [...DESERT_PATHS, ...DESERT_WATERWAYS] as const;
 
@@ -139,6 +141,7 @@ export function canPlaceDesertItem(desert: DesertState, itemId: DesertItemId, x:
 export function applyDesertAction(current: DesertState, earned: number, action: DesertAction): DesertState {
   const desert = normalizeDesert(current);
   if (action.type === 'buy') {
+    if (DESERT_RETIRED_PATHS.some(id => id === action.itemId)) throw new Error('Этот вариант дорожки больше не продаётся.');
     const item = DESERT_CATALOG.find(entry => entry.id === action.itemId);
     const quantity = action.quantity ?? 1;
     if (!item || !Number.isInteger(quantity) || quantity < 1 || quantity > 20) throw new Error('Выбери от 1 до 20 предметов.');

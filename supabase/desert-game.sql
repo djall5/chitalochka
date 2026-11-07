@@ -137,7 +137,7 @@ begin
       when 'rabbit' then 60 when 'hedgehog' then 45 when 'bird' then 50 when 'ladybug' then 25
       when 'fence' then 35 when 'woodenCottage' then 120 when 'treehouse' then 160 when 'stoneCottage' then 180
       when 'squirrel' then 45 when 'fox' then 80 when 'wolf' then 100 when 'deer' then 110
-      when 'stonePathThree' then 15 when 'stonePathTwo' then 10 when 'stonePathOne' then 5
+      when 'stonePathOne' then 5
       when 'stream' then 35 when 'pond' then 80 else null end;
     if v_price is null then raise exception 'Неизвестный предмет.'; end if;
     if coalesce(p_action ->> 'quantity', '1') !~ '^([1-9]|1[0-9]|20)$' then raise exception 'Выбери от 1 до 20 предметов.'; end if;
