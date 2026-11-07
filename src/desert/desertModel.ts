@@ -45,7 +45,8 @@ export type DesertAction =
   | { type: 'buy'; itemId: DesertItemId; quantity?: number }
   | { type: 'water'; cells: number[] }
   | { type: 'place'; itemId: DesertItemId; x: number; y: number; id: string; rotation?: number; facing?: 'left' | 'right'; mirrored?: boolean; scale?: number }
-  | { type: 'edit'; id: string; x: number; y: number; rotation?: number; facing?: 'left' | 'right'; mirrored?: boolean; scale?: number; layer?: number };
+  | { type: 'edit'; id: string; x: number; y: number; rotation?: number; facing?: 'left' | 'right'; mirrored?: boolean; scale?: number; layer?: number }
+  | { type: 'store'; id: string };
 
 export interface DesertObject { id: string; itemId: DesertItemId; x: number; y: number; rotation?: number; facing?: 'left' | 'right'; mirrored?: boolean; scale?: number; layer?: number }
 export interface DesertState {
@@ -160,6 +161,13 @@ export function applyDesertAction(current: DesertState, earned: number, action: 
     }
     if (water === desert.water) throw new Error(water <= 0 ? 'Купи воду в магазине.' : 'Этот участок уже зелёный.');
     return { ...desert, cells, water };
+  }
+  if (action.type === 'store') {
+    const object = desert.objects.find(entry => entry.id === action.id);
+    if (!object) throw new Error('Предмет не найден. Обнови мир и попробуй снова.');
+    const count = desert.inventory[object.itemId] || 0;
+    if (count >= 1000) throw new Error('Для этого предмета больше нет места в рюкзаке.');
+    return { ...desert, inventory: { ...desert.inventory, [object.itemId]: count + 1 }, objects: desert.objects.filter(entry => entry.id !== action.id) };
   }
   const editing = action.type === 'edit';
   const existing = editing ? desert.objects.find(object => object.id === action.id) : undefined;

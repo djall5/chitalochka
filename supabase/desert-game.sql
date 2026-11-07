@@ -243,6 +243,19 @@ begin
       case when v_item in ('fence','stonePathThree','stonePathTwo','stonePathOne','stream','pond') then jsonb_build_object('rotation', v_rotation)
         when v_item in ('rabbit','hedgehog','bird','squirrel','fox','wolf','deer') then jsonb_build_object('facing', v_facing)
         else '{}'::jsonb end || jsonb_build_object('mirrored', v_mirrored, 'scale', v_scale));
+  elsif p_action ->> 'type' = 'store' then
+    v_id := p_action ->> 'id';
+    if v_id is null or v_id !~ '^[a-f0-9-]{36}$' then raise exception 'Некорректный предмет.'; end if;
+    select obj, ordinal::integer - 1 into v_existing_object, v_object_index
+    from jsonb_array_elements(v_objects) with ordinality as o(obj, ordinal)
+    where obj ->> 'id' = v_id limit 1;
+    if v_existing_object is null then raise exception 'Предмет не найден. Обнови мир и попробуй снова.'; end if;
+    v_item := v_existing_object ->> 'itemId';
+    if v_item not in ('flower','purpleFlower','bush','tree','willow','mushroom','butterfly','bee','rabbit','hedgehog','bird','ladybug','fence','woodenCottage','treehouse','stoneCottage','squirrel','fox','wolf','deer','stonePathThree','stonePathTwo','stonePathOne','stream','pond') then raise exception 'Неизвестный предмет.'; end if;
+    v_amount := coalesce((v_inventory ->> v_item)::integer, 0);
+    if v_amount >= 1000 then raise exception 'Для этого предмета больше нет места в рюкзаке.'; end if;
+    v_inventory := jsonb_set(v_inventory, array[v_item], to_jsonb(v_amount + 1), true);
+    v_objects := v_objects - v_object_index;
   elsif p_action ->> 'type' = 'edit' then
     v_id := p_action ->> 'id';
     select obj, ordinal::integer - 1 into v_existing_object, v_object_index
