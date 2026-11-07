@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Droplets, Pencil, ShoppingBag, Sprout, X } from 'lucide-react';
-import { applyDesertAction, canPlaceDesertItem, DESERT_ANIMALS, DESERT_CATALOG, DESERT_CELL_COUNT, DESERT_COLS, DESERT_GROUND_TOP, DESERT_PATHS, DESERT_ROWS, DesertAction, DesertItemId, DesertObject, DesertState, desertBalance, desertCellAt } from '../desert/desertModel';
+import { applyDesertAction, canPlaceDesertItem, DESERT_ANIMALS, DESERT_CATALOG, DESERT_CELL_COUNT, DESERT_COLS, DESERT_FLAT_ITEMS, DESERT_GROUND_TOP, DESERT_PATHS, DESERT_ROWS, DesertAction, DesertItemId, DesertObject, DesertState, desertBalance, desertCellAt } from '../desert/desertModel';
 
 type CharacterDirection = 'front' | 'back' | 'side' | 'threeQuarter';
 export type CharacterImages = Partial<Record<CharacterDirection | 'watering', string>>;
@@ -39,16 +39,19 @@ const itemSprites: Partial<Record<DesertItemId, { file: string; width: number; t
   stonePathThree: { file: 'stone-path-three.png', width: 105 },
   stonePathTwo: { file: 'stone-path-two.png', width: 72 },
   stonePathOne: { file: 'stone-path-one.png', width: 38 },
+  stream: { file: 'stream.png', width: 200 },
+  pond: { file: 'pond.png', width: 150 },
 };
 const itemSpriteUrl = (file: string) => `${import.meta.env.BASE_URL}desert/items/${file}`;
 const animals = new Set<DesertItemId>(DESERT_ANIMALS);
 const paths = new Set<DesertItemId>(DESERT_PATHS);
+const flatItems = new Set<DesertItemId>(DESERT_FLAT_ITEMS);
 const shopSections = [
   { id: 'all', label: 'Все' }, { id: 'water', label: 'Вода' }, { id: 'plants', label: 'Растения' },
-  { id: 'life', label: 'Жители' }, { id: 'buildings', label: 'Домики' }, { id: 'fences', label: 'Заборы' }, { id: 'paths', label: 'Дорожки' },
+  { id: 'life', label: 'Жители' }, { id: 'buildings', label: 'Домики' }, { id: 'fences', label: 'Заборы' }, { id: 'paths', label: 'Дорожки' }, { id: 'waterways', label: 'Водоёмы' },
 ] as const;
 function itemSpriteStyle(sprite: { width: number; tall?: boolean; height?: number }, x: number, y: number, rotation = 0, flipped = false, scale = 1, fence = false, path = false): React.CSSProperties {
-  if (path) return { left: `${x * 100}%`, top: `${y * 100}%`, width: `clamp(28px, ${(sprite.width / sceneWidth * 100).toFixed(1)}vw, ${sprite.width}px)`, transform: `translate(-50%, -50%) rotate(${rotation}deg) scale(${scale}) ${flipped ? 'scaleX(-1)' : ''}`, transformOrigin: 'center center' };
+  if (path) return { left: `${x * 100}%`, top: `${y * 100}%`, width: `clamp(28px, ${(sprite.width / sceneWidth * 100).toFixed(1)}vw, ${sprite.width}px)`, transform: `translate(-50%, -50%) rotateZ(${rotation}deg) scale(${scale}) ${flipped ? 'scaleX(-1)' : ''}`, transformOrigin: 'center center' };
   return { left: `${x * 100}%`, top: `${y * 100}%`,
     width: sprite.tall ? 'auto' : `clamp(38px, ${(sprite.width / sceneWidth * 100).toFixed(1)}vw, ${sprite.width}px)`,
     height: sprite.tall ? `min(38vh, ${sprite.height || 270}px)` : undefined,
@@ -140,7 +143,7 @@ export function DesertGame({ studentName, earned, desert, character, onAction, o
   const greenCount = world.cells.filter(stage => stage === 3).length;
   const selectedItem = DESERT_CATALOG.find(item => item.id === selected)!;
   const inventoryCount = world.inventory[selected] || 0;
-  const rotatable = selected === 'fence' || paths.has(selected);
+  const rotatable = selected === 'fence' || flatItems.has(selected);
   const previewPoint = selected !== 'water' && (inventoryCount > 0 || editingObjectId) && !shopOpen && (!editMode || editingObjectId) ? placementPoint ?? (editingObjectId ? null : hoverPoint) : null;
   const previewValid = previewPoint !== null && canPlaceDesertItem(world, selected, previewPoint.x, previewPoint.y, rotatable ? objectRotation : 0);
   const previewFlipped = animals.has(selected) ? animalFacing === 'left' : mirrored;
@@ -300,9 +303,9 @@ export function DesertGame({ studentName, earned, desert, character, onAction, o
       {[...world.objects].sort((a, b) => a.y - b.y || a.x - b.x).map(object => {
         const item = DESERT_CATALOG.find(entry => entry.id === object.itemId);
         const sprite = itemSprites[object.itemId];
-        return item && sprite && object.id !== editingObjectId && <img key={object.id} src={itemSpriteUrl(sprite.file)} alt={item.name} role={editMode ? "button" : undefined} tabIndex={editMode ? 0 : -1} aria-label={editMode ? `Изменить предмет: ${item.name}` : undefined} onPointerDown={event => { if (!editMode) return; event.stopPropagation(); beginEditing(object); }} onKeyDown={event => { if (editMode && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); beginEditing(object); } }} draggable={false} className={`absolute object-contain drop-shadow-lg ${editMode ? "cursor-pointer focus-visible:outline focus-visible:outline-4 focus-visible:outline-amber-300" : "pointer-events-none"}`} style={{ ...itemSpriteStyle(sprite, object.x, object.y, object.rotation || 0, object.mirrored === true || (animals.has(object.itemId) && object.facing === 'left'), object.scale ?? 1, object.itemId === 'fence', paths.has(object.itemId)), zIndex: objectDepth(object.y, object.layer) }} />;
+        return item && sprite && object.id !== editingObjectId && <img key={object.id} src={itemSpriteUrl(sprite.file)} alt={item.name} role={editMode ? "button" : undefined} tabIndex={editMode ? 0 : -1} aria-label={editMode ? `Изменить предмет: ${item.name}` : undefined} onPointerDown={event => { if (!editMode) return; event.stopPropagation(); beginEditing(object); }} onKeyDown={event => { if (editMode && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); beginEditing(object); } }} draggable={false} className={`absolute object-contain drop-shadow-lg ${editMode ? "cursor-pointer focus-visible:outline focus-visible:outline-4 focus-visible:outline-amber-300" : "pointer-events-none"}`} style={{ ...itemSpriteStyle(sprite, object.x, object.y, object.rotation || 0, object.mirrored === true || (animals.has(object.itemId) && object.facing === 'left'), object.scale ?? 1, object.itemId === 'fence', flatItems.has(object.itemId)), zIndex: objectDepth(object.y, object.layer) }} />;
       })}
-      {previewPoint && <img src={itemSpriteUrl(itemSprites[selected]!.file)} alt={`Предпросмотр: ${selectedItem.name}`} draggable={false} className={`pointer-events-none absolute object-contain drop-shadow-xl ${previewValid ? 'opacity-75' : 'opacity-35 grayscale'}`} style={{ ...itemSpriteStyle(itemSprites[selected]!, previewPoint.x, previewPoint.y, rotatable ? objectRotation : 0, previewFlipped, objectScale, selected === 'fence', paths.has(selected)), zIndex: objectDepth(previewPoint.y, editingObjectId ? objectLayer : 0) + 1 }} />}
+      {previewPoint && <img src={itemSpriteUrl(itemSprites[selected]!.file)} alt={`Предпросмотр: ${selectedItem.name}`} draggable={false} className={`pointer-events-none absolute object-contain drop-shadow-xl ${previewValid ? 'opacity-75' : 'opacity-35 grayscale'}`} style={{ ...itemSpriteStyle(itemSprites[selected]!, previewPoint.x, previewPoint.y, rotatable ? objectRotation : 0, previewFlipped, objectScale, selected === 'fence', flatItems.has(selected)), zIndex: objectDepth(previewPoint.y, editingObjectId ? objectLayer : 0) + 1 }} />}
       <img src={imageForDirection} alt={showWateringImage ? 'Герой поливает пустыню' : 'Герой озеленяет пустыню'} draggable={false} className="pointer-events-none absolute h-[min(26vh,180px)] w-auto object-contain drop-shadow-xl transition-[left,top] duration-700 ease-out" style={{ left: `${hero.x * 100}%`, top: `${hero.y * 100}%`, zIndex: objectDepth(hero.y), transform: `translate(-50%, -100%) ${hero.facesLeft && (showWateringImage || direction === 'side') ? 'scaleX(-1)' : ''}` }} />
       <div className="pointer-events-none absolute bottom-2 left-1/2 z-[40000] max-w-[90%] -translate-x-1/2 rounded-2xl bg-slate-950/70 px-4 py-2 text-center text-xs font-bold text-white sm:text-sm" role="status">{message}</div>
     </div>
