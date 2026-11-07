@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { BookOpen, Check, ChevronDown, ChevronUp, CopyPlus, Gamepad2, Library, Pencil, Play, Plus, Search, Trash2, Upload, UserRound, WandSparkles, X } from 'lucide-react';
-import { LessonData, LessonStatus, MemoryPair, ReadingTextPage, Step13Config } from '../types';
+import { LessonData, LessonStatus, MemoryPair, ReadAndChooseTask, ReadingTextPage, Step13Config, Step14Config } from '../types';
 import { cloneLesson, GameLibraryItem, GameStepKey, lessonGameOrder } from '../gameLibrary';
 import { applyLetterToSelectedGames, isRussianLetter } from '../letterLesson';
 import { syllabifyRussian } from '../utils/syllabifyRussian';
@@ -9,6 +9,7 @@ import { autoGenerateMazeGrid, autoGenerateSyllableGrid } from '../utils/generat
 import { generateRocketStages, parseRocketConsonants, parseRocketVowels } from '../utils/rocketSyllables';
 import { ColoringEditor } from './ColoringEditor';
 import { DrawingPagesEditor } from './DrawingPagesEditor';
+import { createReadAndChooseAnswer, createReadAndChooseTask } from '../utils/readAndChoose';
 
 type Props = {
   lessons: LessonData[];
@@ -173,15 +174,21 @@ export function LessonBuilder({ initialLesson, games, isEditing = false, onBack,
   const save = (play: boolean) => {
     if (!data.gameOrder?.length) { setError('Добавьте в урок хотя бы одну игру.'); return; }
     if (!coloringReady()) { setError('Настройте игру «Прочитай и раскрась»: загрузите рисунок, введите предложения и задайте цвет каждой области.'); return; }
+    if (!readAndChooseReady()) { setError('Настройте игру «Прочитай и выбери»: добавьте предложение, от 2 до 6 картинок и отметьте один верный ответ в каждом задании.'); return; }
     onSave(cloneLesson(data), play);
   };
   const coloringReady = () => selectedGames.filter(game => game.stepKey === 'step13').every(game => {
     const config = (data.gameInstances?.[game.id]?.config.step13 || data.step13) as Step13Config;
     return config.imageDataUrl && config.regionMapDataUrl && config.sentences.some(sentence => sentence.trim()) && config.regions.some(region => region.enabled) && config.regions.every(region => !region.enabled || !!region.targetColor);
   });
+  const readAndChooseReady = () => selectedGames.filter(game => game.stepKey === 'step14').every(game => {
+    const config = (data.gameInstances?.[game.id]?.config.step14 || data.step14) as Step14Config;
+    return config.tasks.length > 0 && config.tasks.every(task => task.plainText.trim() && (task.displayMode !== 'syllables' || task.syllabifiedText.trim()) && task.answers.length >= 2 && task.answers.length <= 6 && task.answers.every(answer => answer.imageDataUrl) && task.answers.filter(answer => answer.isCorrect).length === 1);
+  });
   const preview = () => {
     if (!data.gameOrder?.length) { setError('Добавьте в урок хотя бы одну игру, чтобы открыть предпросмотр.'); return; }
     if (!coloringReady()) { setError('Сначала настройте игру «Прочитай и раскрась».'); return; }
+    if (!readAndChooseReady()) { setError('Сначала настройте игру «Прочитай и выбери».'); return; }
     onPreview(cloneLesson(data));
   };
 
@@ -216,6 +223,44 @@ type GameContentEditorProps = {
   onSave: () => void;
   onCancel: () => void;
 };
+
+function ReadAndChooseEditor({ config, onChange }: { config: Step14Config; onChange: (patch: Partial<Step14Config>) => void }) {
+  const [error, setError] = useState('');
+  const inputClass = 'mt-1 w-full rounded-xl border border-pink-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 outline-none focus:border-pink-500';
+  const updateTask = (id: string, patch: Partial<ReadAndChooseTask>) => onChange({ tasks: config.tasks.map(task => task.id === id ? { ...task, ...patch } : task) });
+  const removeTask = (id: string) => onChange({ tasks: config.tasks.filter(task => task.id !== id) });
+  const updateAnswers = (task: ReadAndChooseTask, answers: ReadAndChooseTask['answers']) => updateTask(task.id, { answers });
+  const upload = async (task: ReadAndChooseTask, answerId: string, file?: File) => {
+    if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) { setError('Подойдут файлы JPG, PNG или WebP.'); return; }
+    if (file.size > 12 * 1024 * 1024) { setError('Изображение должно быть меньше 12 МБ.'); return; }
+    try {
+      const bitmap = await createImageBitmap(file);
+      const scale = Math.min(1, 800 / bitmap.width, 600 / bitmap.height);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      canvas.getContext('2d')?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      bitmap.close();
+      updateAnswers(task, task.answers.map(answer => answer.id === answerId ? { ...answer, imageDataUrl: canvas.toDataURL('image/jpeg', 0.84) } : answer));
+      setError('');
+    } catch { setError('Не удалось прочитать этот файл изображения.'); }
+  };
+
+  return <div className="space-y-3 rounded-2xl bg-pink-50/60 p-4">
+    <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-xs font-black text-pink-700">Задания «Прочитай и выбери»</h3><p className="mt-1 text-[10px] font-semibold text-slate-500">В каждом задании ребёнок читает одно предложение и выбирает одну картинку. Можно добавить от 2 до 6 вариантов.</p></div><button className={lightButton} onClick={() => onChange({ tasks: [...config.tasks, createReadAndChooseTask()] })}><Plus className="h-3.5 w-3.5" />Добавить задание</button></div>
+    {config.tasks.map((task, taskIndex) => <div key={task.id} className="space-y-3 rounded-2xl border border-pink-100 bg-white p-3">
+      <div className="flex items-center justify-between gap-2"><span className="text-xs font-black text-pink-700">Задание {taskIndex + 1}</span><button className="rounded-lg bg-rose-50 p-2 text-rose-500" title="Удалить задание" onClick={() => removeTask(task.id)}><Trash2 className="h-4 w-4" /></button></div>
+      <label className="block text-[10px] font-bold text-slate-600">Предложение<textarea className={inputClass} rows={2} value={task.plainText} onChange={event => updateTask(task.id, { plainText: event.target.value })} placeholder="Например, Маша моет окно." /></label>
+      <div className="grid gap-2 sm:grid-cols-[1fr_auto]"><label className="block text-[10px] font-bold text-slate-600">Вариант по слогам · можно править вручную<textarea className={inputClass} rows={2} value={task.syllabifiedText} onChange={event => updateTask(task.id, { syllabifiedText: event.target.value })} placeholder="Ма-ша мо-ет ок-но." /></label><div className="flex items-end"><button className={lightButton} onClick={() => updateTask(task.id, { syllabifiedText: syllabifyRussian(task.plainText) })}>✨ Сделать по слогам</button></div></div>
+      <label className="block text-[10px] font-bold text-slate-600">Показывать ребёнку<select className={inputClass} value={task.displayMode} onChange={event => updateTask(task.id, { displayMode: event.target.value as ReadAndChooseTask['displayMode'] })}><option value="whole">Цельное предложение</option><option value="syllables">По слогам</option></select></label>
+      <div className="grid gap-2 sm:grid-cols-2">{task.answers.map((answer, answerIndex) => <div key={answer.id} className={`rounded-xl border p-2 ${answer.isCorrect ? 'border-emerald-300 bg-emerald-50/50' : 'border-slate-200 bg-slate-50'}`}><div className="flex items-center justify-between gap-2"><label className="inline-flex items-center gap-1 text-[10px] font-black text-slate-600"><input type="radio" checked={answer.isCorrect} onChange={() => updateAnswers(task, task.answers.map(item => ({ ...item, isCorrect: item.id === answer.id })))} />Правильная</label><button className="rounded-lg bg-rose-50 p-1.5 text-rose-500 disabled:opacity-30" disabled={task.answers.length <= 2} title="Удалить вариант" onClick={() => updateAnswers(task, task.answers.filter(item => item.id !== answer.id))}><X className="h-3.5 w-3.5" /></button></div><label className={`${lightButton} mt-2 w-full cursor-pointer justify-center`}><Upload className="h-3.5 w-3.5" />{answer.imageDataUrl ? 'Заменить картинку' : `Загрузить вариант ${answerIndex + 1}`}<input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={event => { void upload(task, answer.id, event.target.files?.[0]); event.currentTarget.value = ''; }} /></label>{answer.imageDataUrl ? <img src={answer.imageDataUrl} alt={`Вариант ${answerIndex + 1}`} className="mt-2 h-28 w-full rounded-lg bg-white object-contain" /> : <div className="mt-2 flex h-28 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-white text-[10px] font-bold text-slate-400">Картинка не выбрана</div>}</div>)}</div>
+      {task.answers.length < 6 && <button className={lightButton} onClick={() => updateAnswers(task, [...task.answers, createReadAndChooseAnswer(false)])}><Plus className="h-3.5 w-3.5" />Добавить вариант картинки</button>}
+    </div>)}
+    {!config.tasks.length && <p className="rounded-xl bg-white p-3 text-xs font-semibold text-slate-500">Добавьте первое задание: предложение и минимум две картинки.</p>}
+    {error && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-xs font-bold text-rose-600">{error}</p>}
+  </div>;
+}
 
 function GameContentEditor({ game, lesson, onChange, onSave, onCancel }: GameContentEditorProps) {
   const [imageError, setImageError] = useState('');
@@ -292,6 +337,8 @@ function GameContentEditor({ game, lesson, onChange, onSave, onCancel }: GameCon
   };
   const preview = stepKey === 'step13'
     ? <div className="w-full max-w-sm space-y-2">{lesson.step13.imageDataUrl ? <img src={lesson.step13.imageDataUrl} alt="Раскраска" className="mx-auto max-h-56 rounded-xl bg-white object-contain" /> : <p className="rounded-xl bg-white p-4 text-xs text-slate-500">Загрузите раскраску</p>}<p className="rounded-xl bg-violet-50 p-3 text-sm font-bold">{lesson.step13.sentences.find(sentence => sentence.trim()) || 'Здесь появится текст под раскраской'}</p></div>
+    : stepKey === 'step14'
+      ? (() => { const task = lesson.step14.tasks[0]; const text = task?.displayMode === 'syllables' ? task.syllabifiedText || task.plainText : task?.plainText; return <div className="w-full max-w-sm space-y-2"><p className="rounded-xl border-2 border-slate-200 bg-white p-3 text-center text-sm font-black">{text || 'Здесь появится предложение'}</p><div className="grid grid-cols-2 gap-2">{(task?.answers || []).slice(0, 4).map((answer, index) => <div key={answer.id} className={`h-20 rounded-xl border p-1 ${answer.isCorrect ? 'border-emerald-400 bg-emerald-50' : 'border-pink-100 bg-white'}`}>{answer.imageDataUrl ? <img src={answer.imageDataUrl} alt={`Вариант ${index + 1}`} className="h-full w-full object-contain" /> : <span className="flex h-full items-center justify-center text-[10px] font-bold text-slate-400">Картинка {index + 1}</span>}</div>)}</div></div>; })()
     : stepKey === 'step3'
     ? <div className="grid max-w-xs gap-1.5" style={{ gridTemplateColumns: `repeat(${lesson.step3.gridCols}, minmax(0, 1fr))` }}>{lesson.step3.cells.flatMap((row, rowIndex) => row.map((letter, columnIndex) => <span key={`${rowIndex}-${columnIndex}`} className="flex aspect-square items-center justify-center rounded-lg border border-pink-200 bg-white text-xs font-black text-pink-700">{letter}</span>))}</div>
     : stepKey === 'step8'
@@ -354,10 +401,11 @@ function GameContentEditor({ game, lesson, onChange, onSave, onCancel }: GameCon
           return <div className="space-y-3 rounded-2xl bg-sky-50/70 p-4"><div><h3 className="text-xs font-black text-sky-900">Настройки игры «Ракета слогов»</h3><p className="mt-1 text-[10px] font-semibold text-slate-500">Сначала ребёнок читает гласные. Затем вводите по одной согласной: каждая сразу создаёт новый уровень и добавляется слева — Т → СТ → ВСТ.</p></div><label className="block text-[10px] font-bold text-slate-600">Гласные в первом столбике<input className={inputClass} value={lesson.step12.vowels.join(', ')} onChange={event => refreshRocket(parseRocketVowels(event.target.value))} placeholder="А, О, У, Ы, Э, Е, Ё, Ю, Я, И" /></label><div className="grid gap-2 sm:grid-cols-2">{consonantSlots.map((letter, index) => <label key={`rocket-consonant-${index}`} className="block rounded-xl bg-white p-2 text-[10px] font-bold text-slate-600">Уровень {index + 2} · добавить слева<input maxLength={1} className={inputClass} value={letter} onChange={event => { const nextLetter = parseRocketConsonants(event.target.value)[0] || ''; const consonants = [...lesson.step12.consonants]; if (index < consonants.length) { if (nextLetter) consonants[index] = nextLetter; else consonants.splice(index, 1); } else if (nextLetter) consonants.push(nextLetter); refreshRocket(lesson.step12.vowels, consonants); }} placeholder="Например, Т" /></label>)}</div><p className="text-[10px] font-semibold text-sky-700">Столбики обновляются сразу после изменения букв. При необходимости их можно подправить вручную ниже; следующее изменение букв снова построит их автоматически.</p><div className="space-y-2">{lesson.step12.stages.map((stage, index) => <label key={`rocket-stage-${index}`} className="block rounded-xl bg-white p-2 text-[10px] font-bold text-slate-600">Ступень {index + 1}{index === 0 ? ' · только гласные' : ` · ${lesson.step12.consonants.slice(0, index).reverse().join('')}`}<input className={inputClass} value={stage.join(', ')} onChange={event => updateConfig({ stages: lesson.step12.stages.map((item, stageIndex) => stageIndex === index ? event.target.value.split(/[,;\s]+/).map(value => value.trim()).filter(Boolean) : item) })} placeholder="Слоги через запятую" /></label>)}</div><p className="text-[10px] font-semibold text-sky-700">Регистр остаётся таким, как его ввёл учитель. В полёте за подтверждённую ступень начисляется 1 балл.</p></div>;
         })()}
         {stepKey === 'step13' && <ColoringEditor config={lesson.step13} onChange={updateConfig} />}
-        {stepKey === 'step13' && imageError && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-xs font-bold text-rose-600">{imageError}</p>}
+        {stepKey === 'step14' && <ReadAndChooseEditor config={lesson.step14} onChange={updateConfig} />}
+        {(stepKey === 'step13' || stepKey === 'step14') && imageError && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-xs font-bold text-rose-600">{imageError}</p>}
         <details className="rounded-2xl border border-pink-200 bg-gradient-to-br from-pink-50 to-violet-50 p-4"><summary className="cursor-pointer text-xs font-black text-pink-700">👀 Предпросмотр для ученика</summary><div className="mt-3 flex flex-col items-center gap-3"><h3 className="text-center text-base font-black text-pink-600">{lesson[stepKey].title}</h3>{preview}</div></details>
       </div>
-      <footer className="flex justify-end gap-2 border-t border-pink-100 bg-slate-50 p-4"><button className={lightButton} onClick={onCancel}>Отмена</button><button className={pinkButton} onClick={() => { if (stepKey === 'step13' && (!lesson.step13.imageDataUrl || !lesson.step13.regionMapDataUrl || !lesson.step13.sentences.some(sentence => sentence.trim()) || !lesson.step13.regions.some(region => region.enabled) || lesson.step13.regions.some(region => region.enabled && !region.targetColor))) { setImageError('Добавьте картинку и текст, затем задайте правильный цвет каждой включённой области.'); return; } onSave(); }}><Check className="h-4 w-4" />Сохранить в урок</button></footer>
+      <footer className="flex justify-end gap-2 border-t border-pink-100 bg-slate-50 p-4"><button className={lightButton} onClick={onCancel}>Отмена</button><button className={pinkButton} onClick={() => { if (stepKey === 'step13' && (!lesson.step13.imageDataUrl || !lesson.step13.regionMapDataUrl || !lesson.step13.sentences.some(sentence => sentence.trim()) || !lesson.step13.regions.some(region => region.enabled) || lesson.step13.regions.some(region => region.enabled && !region.targetColor))) { setImageError('Добавьте картинку и текст, затем задайте правильный цвет каждой включённой области.'); return; } if (stepKey === 'step14' && (!lesson.step14.tasks.length || lesson.step14.tasks.some(task => !task.plainText.trim() || (task.displayMode === 'syllables' && !task.syllabifiedText.trim()) || task.answers.length < 2 || task.answers.length > 6 || task.answers.some(answer => !answer.imageDataUrl) || task.answers.filter(answer => answer.isCorrect).length !== 1))) { setImageError('Заполните предложение, добавьте 2–6 картинок и отметьте один правильный ответ в каждом задании.'); return; } onSave(); }}><Check className="h-4 w-4" />Сохранить в урок</button></footer>
     </section>
   </div>;
 }

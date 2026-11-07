@@ -1,6 +1,7 @@
 import { LessonData } from './types';
 import { defaultRocketSyllables } from './utils/rocketSyllables';
 import { defaultColoringStep } from './utils/coloringImage';
+import { defaultReadAndChooseStep } from './utils/readAndChoose';
 
 export const defaultLessonY: LessonData = {
   id: 'lesson-y',
@@ -104,6 +105,7 @@ export const defaultLessonY: LessonData = {
   step11: { title: '⚡ Найди слог на время!', instruction: 'Смотри на большой слог и быстро найди его среди карточек.', practiceLetters: 'Й, А, О, И', syllables: ['ЙА', 'ЙО', 'АЙ', 'ОЙ'], targetCount: 4, timeLimit: 30, optionsPerRound: 8 },
   step12: defaultRocketSyllables(),
   step13: defaultColoringStep(),
+  step14: defaultReadAndChooseStep(),
 };
 
 export const defaultLessonS: LessonData = {
@@ -198,6 +200,7 @@ export const defaultLessonS: LessonData = {
   step11: { title: '⚡ Найди слог на время!', instruction: 'Смотри на большой слог и быстро найди его среди карточек.', practiceLetters: 'С, А, О, У, И', syllables: ['СА', 'СО', 'СУ', 'СИ'], targetCount: 4, timeLimit: 30, optionsPerRound: 8 },
   step12: defaultRocketSyllables(),
   step13: defaultColoringStep(),
+  step14: defaultReadAndChooseStep(),
 };
 
 export const PRESET_LESSONS = [defaultLessonY, defaultLessonS];

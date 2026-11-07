@@ -1,8 +1,9 @@
 import { LessonData, MemoryPair, ReadingCardItem, ReadingTextPage, Step7Config } from './types';
 import { defaultRocketSyllables } from './utils/rocketSyllables';
 import { defaultColoringStep } from './utils/coloringImage';
+import { defaultReadAndChooseStep } from './utils/readAndChoose';
 
-export type GameStepKey = 'step1' | 'step2' | 'step3' | 'step4' | 'step5' | 'step6' | 'step7' | 'step8' | 'step9' | 'step10' | 'step11' | 'step12' | 'step13';
+export type GameStepKey = 'step1' | 'step2' | 'step3' | 'step4' | 'step5' | 'step6' | 'step7' | 'step8' | 'step9' | 'step10' | 'step11' | 'step12' | 'step13' | 'step14';
 
 export interface GameLibraryItem {
   id: string;
@@ -28,12 +29,13 @@ export const DEFAULT_GAME_LIBRARY: GameLibraryItem[] = [
   { id: 'speed-syllables', title: 'Найди слог на время', emoji: '⚡', category: 'Слоги', description: 'Смотри на слог вверху и быстро находи его среди карточек.', stepKey: 'step11' },
   { id: 'rocket-syllables', title: 'Ракета слогов', emoji: '🚀', category: 'Слоги', description: 'Прочитай столбики — ракета пролетит через слои космоса.', stepKey: 'step12' },
   { id: 'read-and-color', title: 'Прочитай и раскрась', emoji: '🖼️', category: 'Чтение', description: 'Читай предложения и раскрашивай рисунок по тексту.', stepKey: 'step13' },
+  { id: 'read-and-choose', title: 'Прочитай и выбери', emoji: '🖼️', category: 'Чтение', description: 'Прочитай предложение и выбери подходящую картинку.', stepKey: 'step14' },
 ];
 
 export const gameStepIndex = (key: GameStepKey) => Number(key.slice(4)) - 1;
 
 export const lessonGameOrder = (lesson: LessonData) =>
-  lesson.gameOrder?.length ? lesson.gameOrder : DEFAULT_GAME_LIBRARY.filter(game => !['step7', 'step8', 'step9', 'step10', 'step11', 'step12', 'step13'].includes(game.stepKey)).map(game => game.id);
+  lesson.gameOrder?.length ? lesson.gameOrder : DEFAULT_GAME_LIBRARY.filter(game => !['step7', 'step8', 'step9', 'step10', 'step11', 'step12', 'step13', 'step14'].includes(game.stepKey)).map(game => game.id);
 
 export const cloneLesson = (lesson: LessonData): LessonData => {
   const copy = JSON.parse(JSON.stringify(lesson)) as LessonData;
@@ -44,6 +46,7 @@ export const cloneLesson = (lesson: LessonData): LessonData => {
   if (!copy.step11) copy.step11 = { title: '⚡ Найди слог на время!', instruction: 'Смотри на большой слог и быстро найди его среди карточек.', practiceLetters: 'М, А, О, У, И', syllables: ['МА', 'МО', 'МУ'], targetCount: 3, timeLimit: 30, optionsPerRound: 8 };
   if (!copy.step12) copy.step12 = defaultRocketSyllables();
   if (!copy.step13) copy.step13 = defaultColoringStep();
+  if (!copy.step14) copy.step14 = defaultReadAndChooseStep();
   if (!copy.step6) copy.step6 = { title: '📖 Читаем слова!', instruction: 'Нажимайте на карточки со словами и читайте их вслух!', cards: [] };
   if (!Number.isFinite(copy.step10.targetCount)) copy.step10.targetCount = 16;
   if (!Array.isArray(copy.step11.syllables)) copy.step11.syllables = [];
@@ -56,6 +59,14 @@ export const cloneLesson = (lesson: LessonData): LessonData => {
   if (!Array.isArray(copy.step12.stages)) copy.step12.stages = [];
   copy.step12.stages = copy.step12.stages.filter(Array.isArray).map(stage => stage.filter(item => typeof item === 'string'));
   if (!Array.isArray(copy.step9.pairs)) copy.step9.pairs = [];
+  if (!Array.isArray(copy.step14.tasks)) copy.step14.tasks = [];
+  copy.step14.tasks = copy.step14.tasks.map((task, taskIndex) => ({
+    id: task.id || `read-choose-task-${taskIndex + 1}`,
+    plainText: task.plainText || '',
+    syllabifiedText: task.syllabifiedText || '',
+    displayMode: task.displayMode === 'syllables' ? 'syllables' : 'whole',
+    answers: Array.isArray(task.answers) ? task.answers.map((answer, answerIndex) => ({ id: answer.id || `read-choose-answer-${taskIndex + 1}-${answerIndex + 1}`, imageDataUrl: answer.imageDataUrl || '', isCorrect: Boolean(answer.isCorrect) })) : [],
+  }));
   const legacyCards = copy.step6.cards as Array<ReadingCardItem & { showSyllables?: boolean }>;
   if (!copy.step6.displayMode) {
     copy.step6.displayMode = legacyCards.some(card => card.showSyllables || /[-‑]/.test(card.displayWord || '')) ? 'syllables' : 'whole';

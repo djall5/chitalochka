@@ -160,6 +160,28 @@ export interface Step13Config {
   regions: ColoringRegion[];
 }
 
+export type ReadAndChooseDisplayMode = 'whole' | 'syllables';
+
+export interface ReadAndChooseAnswer {
+  id: string;
+  imageDataUrl: string;
+  isCorrect: boolean;
+}
+
+export interface ReadAndChooseTask {
+  id: string;
+  plainText: string;
+  syllabifiedText: string;
+  displayMode: ReadAndChooseDisplayMode;
+  answers: ReadAndChooseAnswer[];
+}
+
+export interface Step14Config {
+  title: string;
+  instruction: string;
+  tasks: ReadAndChooseTask[];
+}
+
 export interface ReadingTextPage {
   id: string;
   imageDataUrl: string;
@@ -201,6 +223,7 @@ export interface LessonData {
   step11: Step11Config;
   step12: Step12Config;
   step13: Step13Config;
+  step14: Step14Config;
 }
 
 export type LessonStatus = 'in-progress' | 'completed' | 'repeat';
