@@ -27,11 +27,12 @@ export const DESERT_CATALOG = [
   { id: 'deer', name: 'Олень', price: 110, category: 'life' },
   { id: 'stonePathThree', name: 'Три камушка', price: 15, category: 'paths' },
   { id: 'stonePathTwo', name: 'Два камушка', price: 10, category: 'paths' },
+  { id: 'stonePathOne', name: 'Один камушек', price: 5, category: 'paths' },
 ] as const;
 
 export const DESERT_FENCE_LENGTH = 160;
 export const DESERT_ANIMALS = ['rabbit', 'hedgehog', 'bird', 'squirrel', 'fox', 'wolf', 'deer'] as const;
-export const DESERT_PATHS = ['stonePathThree', 'stonePathTwo'] as const;
+export const DESERT_PATHS = ['stonePathThree', 'stonePathTwo', 'stonePathOne'] as const;
 
 export type DesertItemId = typeof DESERT_CATALOG[number]['id'];
 export type DesertAction =
@@ -111,7 +112,7 @@ export function canPlaceDesertItem(desert: DesertState, itemId: DesertItemId, x:
       if (index === null || desert.cells[index] !== 3) return false;
     }
   } else {
-    const pathLength = itemId === 'stonePathThree' ? 100 : 70;
+    const pathLength = itemId === 'stonePathThree' ? 100 : itemId === 'stonePathTwo' ? 70 : 34;
     for (let sample = -3; sample <= 3; sample++) {
       const distance = sample / 3 * pathLength / 2;
       const index = desertCellAt(x + Math.cos(angle) * distance / 1200, y + Math.sin(angle) * distance / 675);

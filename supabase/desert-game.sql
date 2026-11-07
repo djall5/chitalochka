@@ -136,7 +136,7 @@ begin
       when 'rabbit' then 60 when 'hedgehog' then 45 when 'bird' then 50 when 'ladybug' then 25
       when 'fence' then 35 when 'woodenCottage' then 120 when 'treehouse' then 160 when 'stoneCottage' then 180
       when 'squirrel' then 45 when 'fox' then 80 when 'wolf' then 100 when 'deer' then 110
-      when 'stonePathThree' then 15 when 'stonePathTwo' then 10 else null end;
+      when 'stonePathThree' then 15 when 'stonePathTwo' then 10 when 'stonePathOne' then 5 else null end;
     if v_price is null then raise exception 'Неизвестный предмет.'; end if;
     if coalesce(p_action ->> 'quantity', '1') !~ '^([1-9]|1[0-9]|20)$' then raise exception 'Выбери от 1 до 20 предметов.'; end if;
     v_quantity := coalesce((p_action ->> 'quantity')::integer, 1);
@@ -166,7 +166,7 @@ begin
     if v_changed = 0 then raise exception 'Нет воды или участок уже зелёный.'; end if;
   elsif p_action ->> 'type' = 'place' then
     v_item := p_action ->> 'itemId';
-    if v_item not in ('flower','purpleFlower','bush','tree','willow','mushroom','butterfly','bee','rabbit','hedgehog','bird','ladybug','fence','woodenCottage','treehouse','stoneCottage','squirrel','fox','wolf','deer','stonePathThree','stonePathTwo') then raise exception 'Неизвестный предмет.'; end if;
+    if v_item not in ('flower','purpleFlower','bush','tree','willow','mushroom','butterfly','bee','rabbit','hedgehog','bird','ladybug','fence','woodenCottage','treehouse','stoneCottage','squirrel','fox','wolf','deer','stonePathThree','stonePathTwo','stonePathOne') then raise exception 'Неизвестный предмет.'; end if;
     if coalesce((v_inventory ->> v_item)::integer, 0) < 1 then raise exception 'Предмет не куплен.'; end if;
     if (p_action ->> 'x') !~ '^(0(\.[0-9]+)?|1(\.0+)?)$' or (p_action ->> 'y') !~ '^(0(\.[0-9]+)?|1(\.0+)?)$' then raise exception 'Некорректное место.'; end if;
     v_x := (p_action ->> 'x')::numeric;
@@ -188,13 +188,13 @@ begin
         if (v_cells ->> v_sample_index)::integer <> 3 then raise exception 'Вся секция забора должна стоять на зелёной земле.'; end if;
       end loop;
     end if;
-    if v_item in ('stonePathThree','stonePathTwo') then
+    if v_item in ('stonePathThree','stonePathTwo','stonePathOne') then
       if coalesce(p_action ->> 'rotation', '0') !~ '^[0-9]{1,3}$' then raise exception 'Некорректный поворот дорожки.'; end if;
       v_rotation := coalesce((p_action ->> 'rotation')::integer, 0);
       if v_rotation >= 360 or mod(v_rotation, 15) <> 0 then raise exception 'Некорректный поворот дорожки.'; end if;
       for v_sample in -3..3 loop
-        v_sample_x := v_x + cos(radians(v_rotation)) * (v_sample * case when v_item = 'stonePathThree' then 16.666667 else 11.666667 end / 1200.0);
-        v_sample_y := v_y + sin(radians(v_rotation)) * (v_sample * case when v_item = 'stonePathThree' then 16.666667 else 11.666667 end / 675.0);
+        v_sample_x := v_x + cos(radians(v_rotation)) * (v_sample * case when v_item = 'stonePathThree' then 16.666667 when v_item = 'stonePathTwo' then 11.666667 else 5.666667 end / 1200.0);
+        v_sample_y := v_y + sin(radians(v_rotation)) * (v_sample * case when v_item = 'stonePathThree' then 16.666667 when v_item = 'stonePathTwo' then 11.666667 else 5.666667 end / 675.0);
         if v_sample_x < 0 or v_sample_x >= 1 or v_sample_y < 0.28 or v_sample_y >= 1 then raise exception 'Вся дорожка должна находиться на зелёной земле.'; end if;
         v_sample_index := least(3, floor((v_sample_y - 0.28) / 0.72 * 4)::integer) * 12 + floor(v_sample_x * 12)::integer;
         if (v_cells ->> v_sample_index)::integer <> 3 then raise exception 'Вся дорожка должна находиться на зелёной земле.'; end if;
@@ -214,7 +214,7 @@ begin
     if jsonb_array_length(v_objects) >= 500 then raise exception 'Мир уже заполнен.'; end if;
     v_inventory := jsonb_set(v_inventory, array[v_item], to_jsonb((v_inventory ->> v_item)::integer - 1), false);
     v_objects := v_objects || jsonb_build_array(jsonb_build_object('id', v_id, 'itemId', v_item, 'x', v_x, 'y', v_y) ||
-      case when v_item in ('fence','stonePathThree','stonePathTwo') then jsonb_build_object('rotation', v_rotation)
+      case when v_item in ('fence','stonePathThree','stonePathTwo','stonePathOne') then jsonb_build_object('rotation', v_rotation)
         when v_item in ('rabbit','hedgehog','bird','squirrel','fox','wolf','deer') then jsonb_build_object('facing', v_facing)
         else '{}'::jsonb end || jsonb_build_object('mirrored', v_mirrored, 'scale', v_scale));
   elsif p_action ->> 'type' = 'edit' then
@@ -224,7 +224,7 @@ begin
     where obj ->> 'id' = v_id limit 1;
     if v_existing_object is null then raise exception 'Предмет не найден. Обнови мир и попробуй снова.'; end if;
     v_item := v_existing_object ->> 'itemId';
-    if v_item not in ('flower','purpleFlower','bush','tree','willow','mushroom','butterfly','bee','rabbit','hedgehog','bird','ladybug','fence','woodenCottage','treehouse','stoneCottage','squirrel','fox','wolf','deer','stonePathThree','stonePathTwo') then raise exception 'Неизвестный предмет.'; end if;
+    if v_item not in ('flower','purpleFlower','bush','tree','willow','mushroom','butterfly','bee','rabbit','hedgehog','bird','ladybug','fence','woodenCottage','treehouse','stoneCottage','squirrel','fox','wolf','deer','stonePathThree','stonePathTwo','stonePathOne') then raise exception 'Неизвестный предмет.'; end if;
     if coalesce(p_action ->> 'x', '') !~ '^(0(\.[0-9]+)?|1(\.0+)?)$' or coalesce(p_action ->> 'y', '') !~ '^(0(\.[0-9]+)?|1(\.0+)?)$' then raise exception 'Некорректное место.'; end if;
     v_x := (p_action ->> 'x')::numeric;
     v_y := (p_action ->> 'y')::numeric;
@@ -242,13 +242,13 @@ begin
         if (v_cells ->> v_sample_index)::integer <> 3 then raise exception 'Вся секция забора должна стоять на зелёной земле.'; end if;
       end loop;
     end if;
-    if v_item in ('stonePathThree','stonePathTwo') then
+    if v_item in ('stonePathThree','stonePathTwo','stonePathOne') then
       if coalesce(p_action ->> 'rotation', v_existing_object ->> 'rotation', '0') !~ '^[0-9]{1,3}$' then raise exception 'Некорректный поворот дорожки.'; end if;
       v_rotation := coalesce((p_action ->> 'rotation')::integer, (v_existing_object ->> 'rotation')::integer, 0);
       if v_rotation >= 360 or mod(v_rotation, 15) <> 0 then raise exception 'Некорректный поворот дорожки.'; end if;
       for v_sample in -3..3 loop
-        v_sample_x := v_x + cos(radians(v_rotation)) * (v_sample * case when v_item = 'stonePathThree' then 16.666667 else 11.666667 end / 1200.0);
-        v_sample_y := v_y + sin(radians(v_rotation)) * (v_sample * case when v_item = 'stonePathThree' then 16.666667 else 11.666667 end / 675.0);
+        v_sample_x := v_x + cos(radians(v_rotation)) * (v_sample * case when v_item = 'stonePathThree' then 16.666667 when v_item = 'stonePathTwo' then 11.666667 else 5.666667 end / 1200.0);
+        v_sample_y := v_y + sin(radians(v_rotation)) * (v_sample * case when v_item = 'stonePathThree' then 16.666667 when v_item = 'stonePathTwo' then 11.666667 else 5.666667 end / 675.0);
         if v_sample_x < 0 or v_sample_x >= 1 or v_sample_y < 0.28 or v_sample_y >= 1 then raise exception 'Вся дорожка должна находиться на зелёной земле.'; end if;
         v_sample_index := least(3, floor((v_sample_y - 0.28) / 0.72 * 4)::integer) * 12 + floor(v_sample_x * 12)::integer;
         if (v_cells ->> v_sample_index)::integer <> 3 then raise exception 'Вся дорожка должна находиться на зелёной земле.'; end if;
@@ -265,7 +265,7 @@ begin
     if coalesce(p_action ->> 'layer', v_existing_object ->> 'layer', '0') !~ '^(-10|-[1-9]|0|[1-9]|10)$' then raise exception 'Некорректный слой предмета.'; end if;
     v_layer := coalesce((p_action ->> 'layer')::integer, (v_existing_object ->> 'layer')::integer, 0);
     v_objects := jsonb_set(v_objects, array[v_object_index::text], v_existing_object || jsonb_build_object('x', v_x, 'y', v_y, 'mirrored', v_mirrored, 'scale', v_scale, 'layer', v_layer) ||
-      case when v_item in ('fence','stonePathThree','stonePathTwo') then jsonb_build_object('rotation', v_rotation)
+      case when v_item in ('fence','stonePathThree','stonePathTwo','stonePathOne') then jsonb_build_object('rotation', v_rotation)
         when v_item in ('rabbit','hedgehog','bird','squirrel','fox','wolf','deer') then jsonb_build_object('facing', v_facing)
         else '{}'::jsonb end, false);
   else raise exception 'Неизвестное действие.';

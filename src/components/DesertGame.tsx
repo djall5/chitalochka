@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Droplets, ShoppingBag, Sprout, X } from 'lucide-react';
-import { applyDesertAction, canPlaceDesertItem, DESERT_ANIMALS, DESERT_CATALOG, DESERT_CELL_COUNT, DESERT_COLS, DESERT_GROUND_TOP, DESERT_PATHS, DESERT_ROWS, DesertAction, DesertItemId, DesertState, desertBalance, desertCellAt } from '../desert/desertModel';
+import { ArrowLeft, Droplets, Pencil, ShoppingBag, Sprout, X } from 'lucide-react';
+import { applyDesertAction, canPlaceDesertItem, DESERT_ANIMALS, DESERT_CATALOG, DESERT_CELL_COUNT, DESERT_COLS, DESERT_GROUND_TOP, DESERT_PATHS, DESERT_ROWS, DesertAction, DesertItemId, DesertObject, DesertState, desertBalance, desertCellAt } from '../desert/desertModel';
 
 type CharacterDirection = 'front' | 'back' | 'side' | 'threeQuarter';
 export type CharacterImages = Partial<Record<CharacterDirection | 'watering', string>>;
@@ -38,6 +38,7 @@ const itemSprites: Partial<Record<DesertItemId, { file: string; width: number; t
   deer: { file: 'deer.png', width: 115 },
   stonePathThree: { file: 'stone-path-three.png', width: 105 },
   stonePathTwo: { file: 'stone-path-two.png', width: 72 },
+  stonePathOne: { file: 'stone-path-one.png', width: 38 },
 };
 const itemSpriteUrl = (file: string) => `${import.meta.env.BASE_URL}desert/items/${file}`;
 const animals = new Set<DesertItemId>(DESERT_ANIMALS);
@@ -47,11 +48,12 @@ const shopSections = [
   { id: 'life', label: 'Жители' }, { id: 'buildings', label: 'Домики' }, { id: 'fences', label: 'Заборы' }, { id: 'paths', label: 'Дорожки' },
 ] as const;
 function itemSpriteStyle(sprite: { width: number; tall?: boolean; height?: number }, x: number, y: number, rotation = 0, flipped = false, scale = 1, fence = false, path = false): React.CSSProperties {
+  if (path) return { left: `${x * 100}%`, top: `${y * 100}%`, width: `clamp(28px, ${(sprite.width / sceneWidth * 100).toFixed(1)}vw, ${sprite.width}px)`, transform: `translate(-50%, -50%) rotate(${rotation}deg) scale(${scale}) ${flipped ? 'scaleX(-1)' : ''}`, transformOrigin: 'center center' };
   return { left: `${x * 100}%`, top: `${y * 100}%`,
     width: sprite.tall ? 'auto' : `clamp(38px, ${(sprite.width / sceneWidth * 100).toFixed(1)}vw, ${sprite.width}px)`,
     height: sprite.tall ? `min(38vh, ${sprite.height || 270}px)` : undefined,
-    transform: `translate(-50%, ${path ? '-50%' : '-100%'}) scale(${scale}) ${fence ? `perspective(800px) rotateY(${rotation}deg)` : path ? `rotate(${rotation}deg)` : ''} ${flipped ? 'scaleX(-1)' : ''}`,
-    transformOrigin: path ? '50% 50%' : '50% 100%' };
+    transform: `translate(-50%, -100%) scale(${scale}) ${fence ? `perspective(800px) rotateY(${rotation}deg)` : ''} ${flipped ? 'scaleX(-1)' : ''}`,
+    transformOrigin: '50% 100%' };
 }
 const sampleCharacter = `${import.meta.env.BASE_URL}characters/sample-boy/`;
 const sceneWidth = 1200;
@@ -97,7 +99,7 @@ export function DesertGame({ studentName, earned, desert, character, onAction, o
   const [objectScale, setObjectScale] = useState(1);
   const [hoverPoint, setHoverPoint] = useState<{ x: number; y: number } | null>(null);
   const [placementPoint, setPlacementPoint] = useState<{ x: number; y: number } | null>(null);
-  const [focusedObjectId, setFocusedObjectId] = useState<string | null>(null);
+  const [editMode, setEditMode] = useState(false);
   const [editingObjectId, setEditingObjectId] = useState<string | null>(null);
   const [objectLayer, setObjectLayer] = useState(0);
   const [waterQuantity, setWaterQuantity] = useState(1);
@@ -139,8 +141,7 @@ export function DesertGame({ studentName, earned, desert, character, onAction, o
   const selectedItem = DESERT_CATALOG.find(item => item.id === selected)!;
   const inventoryCount = world.inventory[selected] || 0;
   const rotatable = selected === 'fence' || paths.has(selected);
-  const focusedObject = world.objects.find(object => object.id === focusedObjectId);
-  const previewPoint = selected !== 'water' && (inventoryCount > 0 || editingObjectId) && !shopOpen ? placementPoint ?? (editingObjectId ? null : hoverPoint) : null;
+  const previewPoint = selected !== 'water' && (inventoryCount > 0 || editingObjectId) && !shopOpen && (!editMode || editingObjectId) ? placementPoint ?? (editingObjectId ? null : hoverPoint) : null;
   const previewValid = previewPoint !== null && canPlaceDesertItem(world, selected, previewPoint.x, previewPoint.y, rotatable ? objectRotation : 0);
   const previewFlipped = animals.has(selected) ? animalFacing === 'left' : mirrored;
 
@@ -180,8 +181,8 @@ export function DesertGame({ studentName, earned, desert, character, onAction, o
     if (busy) return;
     const point = scenePoint(event);
     if (!point) return;
-    setFocusedObjectId(null);
     moveHero(point.x, point.y);
+    if (editMode && !editingObjectId) { setMessage('Нажми на предмет, который хочешь изменить.'); return; }
     if (desertCellAt(point.x, point.y) === null) return;
     if (selected === 'water') {
       event.currentTarget.setPointerCapture(event.pointerId);
@@ -220,6 +221,7 @@ export function DesertGame({ studentName, earned, desert, character, onAction, o
   }
 
   function onPointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    if (editMode && !editingObjectId) return;
     if (selected !== 'water') {
       if (!placementPoint && inventoryCount > 0) setHoverPoint(scenePoint(event));
       return;
@@ -250,19 +252,28 @@ export function DesertGame({ studentName, earned, desert, character, onAction, o
     setEditingObjectId(null);
   }
 
-  function beginEditing() {
-    if (!focusedObject) return;
-    setSelected(focusedObject.itemId);
-    setPlacementPoint({ x: focusedObject.x, y: focusedObject.y });
+  function beginEditing(object: DesertObject) {
+    if (!editMode || busy) return;
+    setSelected(object.itemId);
+    setPlacementPoint({ x: object.x, y: object.y });
     setHoverPoint(null);
-    setObjectRotation(focusedObject.rotation ?? 0);
-    setAnimalFacing(focusedObject.facing ?? 'right');
-    setMirrored(focusedObject.mirrored ?? false);
-    setObjectScale(focusedObject.scale ?? 1);
-    setObjectLayer(focusedObject.layer ?? 0);
-    setEditingObjectId(focusedObject.id);
-    setFocusedObjectId(null);
+    setObjectRotation(object.rotation ?? 0);
+    setAnimalFacing(object.facing ?? 'right');
+    setMirrored(object.mirrored ?? false);
+    setObjectScale(object.scale ?? 1);
+    setObjectLayer(object.layer ?? 0);
+    setEditingObjectId(object.id);
+    moveHero(object.x, object.y);
     setMessage('Измени предмет или нажми на новое место, затем сохрани.');
+  }
+
+  function toggleEditMode() {
+    setEditMode(value => !value);
+    setSelected('water');
+    setEditingObjectId(null);
+    setPlacementPoint(null);
+    setHoverPoint(null);
+    setMessage(editMode ? 'Нажми на землю, чтобы герой подошёл к этому месту.' : 'Нажми на предмет, который хочешь изменить.');
   }
 
   const direction = hero.direction;
@@ -289,22 +300,21 @@ export function DesertGame({ studentName, earned, desert, character, onAction, o
       {[...world.objects].sort((a, b) => a.y - b.y || a.x - b.x).map(object => {
         const item = DESERT_CATALOG.find(entry => entry.id === object.itemId);
         const sprite = itemSprites[object.itemId];
-        return item && sprite && object.id !== editingObjectId && <img key={object.id} src={itemSpriteUrl(sprite.file)} alt={item.name} role="button" tabIndex={0} aria-label={`Выбрать предмет: ${item.name}`} onPointerDown={event => { event.stopPropagation(); setFocusedObjectId(object.id); setPlacementPoint(null); }} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setFocusedObjectId(object.id); setPlacementPoint(null); } }} draggable={false} className="absolute cursor-pointer object-contain drop-shadow-lg focus-visible:outline focus-visible:outline-4 focus-visible:outline-amber-300" style={{ ...itemSpriteStyle(sprite, object.x, object.y, object.rotation || 0, object.mirrored === true || (animals.has(object.itemId) && object.facing === 'left'), object.scale ?? 1, object.itemId === 'fence', paths.has(object.itemId)), zIndex: objectDepth(object.y, object.layer) }} />;
+        return item && sprite && object.id !== editingObjectId && <img key={object.id} src={itemSpriteUrl(sprite.file)} alt={item.name} role={editMode ? "button" : undefined} tabIndex={editMode ? 0 : -1} aria-label={editMode ? `Изменить предмет: ${item.name}` : undefined} onPointerDown={event => { if (!editMode) return; event.stopPropagation(); beginEditing(object); }} onKeyDown={event => { if (editMode && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); beginEditing(object); } }} draggable={false} className={`absolute object-contain drop-shadow-lg ${editMode ? "cursor-pointer focus-visible:outline focus-visible:outline-4 focus-visible:outline-amber-300" : "pointer-events-none"}`} style={{ ...itemSpriteStyle(sprite, object.x, object.y, object.rotation || 0, object.mirrored === true || (animals.has(object.itemId) && object.facing === 'left'), object.scale ?? 1, object.itemId === 'fence', paths.has(object.itemId)), zIndex: objectDepth(object.y, object.layer) }} />;
       })}
       {previewPoint && <img src={itemSpriteUrl(itemSprites[selected]!.file)} alt={`Предпросмотр: ${selectedItem.name}`} draggable={false} className={`pointer-events-none absolute object-contain drop-shadow-xl ${previewValid ? 'opacity-75' : 'opacity-35 grayscale'}`} style={{ ...itemSpriteStyle(itemSprites[selected]!, previewPoint.x, previewPoint.y, rotatable ? objectRotation : 0, previewFlipped, objectScale, selected === 'fence', paths.has(selected)), zIndex: objectDepth(previewPoint.y, editingObjectId ? objectLayer : 0) + 1 }} />}
       <img src={imageForDirection} alt={showWateringImage ? 'Герой поливает пустыню' : 'Герой озеленяет пустыню'} draggable={false} className="pointer-events-none absolute h-[min(26vh,180px)] w-auto object-contain drop-shadow-xl transition-[left,top] duration-700 ease-out" style={{ left: `${hero.x * 100}%`, top: `${hero.y * 100}%`, zIndex: objectDepth(hero.y), transform: `translate(-50%, -100%) ${hero.facesLeft && (showWateringImage || direction === 'side') ? 'scaleX(-1)' : ''}` }} />
       <div className="pointer-events-none absolute bottom-2 left-1/2 z-[40000] max-w-[90%] -translate-x-1/2 rounded-2xl bg-slate-950/70 px-4 py-2 text-center text-xs font-bold text-white sm:text-sm" role="status">{message}</div>
     </div>
 
-    {focusedObject && !editingObjectId && <div className="absolute left-1/2 top-20 z-20 flex max-w-[90vw] -translate-x-1/2 items-center gap-2 rounded-2xl bg-white/95 p-2 text-sm font-bold text-slate-800 shadow-xl"><span className="truncate">{DESERT_CATALOG.find(item => item.id === focusedObject.itemId)?.name}</span><button onClick={beginEditing} className="rounded-xl bg-emerald-600 px-3 py-2 font-black text-white">Изменить</button><button onClick={() => setFocusedObjectId(null)} aria-label="Закрыть выбор предмета" className="rounded-xl bg-slate-100 p-2"><X size={16} /></button></div>}
 
-    {selected !== 'water' && placementPoint && <div className="absolute right-3 top-16 z-20 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-2 rounded-2xl bg-white/95 p-2 text-xs font-bold text-slate-800 shadow-xl sm:right-5 sm:top-20 sm:text-sm"><span className={previewValid ? 'text-emerald-700' : 'text-rose-600'}>{previewValid ? '✓ Можно разместить' : rotatable ? 'Вся секция должна быть на зелени' : 'Выбери зелёный участок'}</span>{rotatable && <div className="flex items-center gap-1" aria-label="Поворот предмета"><button aria-label="Повернуть предмет влево на 15 градусов" onClick={() => setObjectRotation(value => (value + 345) % 360)} className="rounded-xl bg-amber-100 px-2 py-2 text-lg">↶</button><span className="min-w-9 text-center">{objectRotation}°</span><button aria-label="Повернуть предмет вправо на 15 градусов" onClick={() => setObjectRotation(value => (value + 15) % 360)} className="rounded-xl bg-amber-100 px-2 py-2 text-lg">↷</button></div>}{animals.has(selected) && <div className="flex items-center gap-1" aria-label="Направление животного"><button aria-label="Животное смотрит влево" aria-pressed={animalFacing === 'left'} onClick={() => setAnimalFacing('left')} className={`rounded-xl px-3 py-2 text-lg ${animalFacing === 'left' ? 'bg-amber-300' : 'bg-amber-100'}`}>←</button><button aria-label="Животное смотрит вправо" aria-pressed={animalFacing === 'right'} onClick={() => setAnimalFacing('right')} className={`rounded-xl px-3 py-2 text-lg ${animalFacing === 'right' ? 'bg-amber-300' : 'bg-amber-100'}`}>→</button></div>}<button disabled={!previewValid || busy} onClick={confirmPlacement} className="rounded-xl bg-emerald-600 px-3 py-2 font-black text-white disabled:bg-slate-300">{editingObjectId ? 'Сохранить изменения' : 'Разместить здесь'}</button><button onClick={() => { setPlacementPoint(null); setHoverPoint(null); setEditingObjectId(null); }} className="rounded-xl bg-slate-100 px-3 py-2">Отмена</button></div>}
+    {selected !== 'water' && placementPoint && <div className="absolute right-3 top-16 z-20 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-2 rounded-2xl bg-white/95 p-2 text-xs font-bold text-slate-800 shadow-xl sm:right-5 sm:top-20 sm:text-sm"><span className={previewValid ? 'text-emerald-700' : 'text-rose-600'}>{previewValid ? '✓ Можно разместить' : rotatable ? 'Вся секция должна быть на зелени' : 'Выбери зелёный участок'}</span>{rotatable && <div className="flex items-center gap-1" aria-label="Поворот предмета"><button aria-label={paths.has(selected) ? "Повернуть дорожку против часовой стрелки на 15 градусов" : "Повернуть предмет влево на 15 градусов"} onClick={() => setObjectRotation(value => (value + 345) % 360)} className="rounded-xl bg-amber-100 px-2 py-2 text-lg">{paths.has(selected) ? "↺" : "↶"}</button><span className="min-w-9 text-center">{objectRotation}°</span><button aria-label={paths.has(selected) ? "Повернуть дорожку по часовой стрелке на 15 градусов" : "Повернуть предмет вправо на 15 градусов"} onClick={() => setObjectRotation(value => (value + 15) % 360)} className="rounded-xl bg-amber-100 px-2 py-2 text-lg">{paths.has(selected) ? "↻" : "↷"}</button></div>}{animals.has(selected) && <div className="flex items-center gap-1" aria-label="Направление животного"><button aria-label="Животное смотрит влево" aria-pressed={animalFacing === 'left'} onClick={() => setAnimalFacing('left')} className={`rounded-xl px-3 py-2 text-lg ${animalFacing === 'left' ? 'bg-amber-300' : 'bg-amber-100'}`}>←</button><button aria-label="Животное смотрит вправо" aria-pressed={animalFacing === 'right'} onClick={() => setAnimalFacing('right')} className={`rounded-xl px-3 py-2 text-lg ${animalFacing === 'right' ? 'bg-amber-300' : 'bg-amber-100'}`}>→</button></div>}<button disabled={!previewValid || busy} onClick={confirmPlacement} className="rounded-xl bg-emerald-600 px-3 py-2 font-black text-white disabled:bg-slate-300">{editingObjectId ? 'Сохранить изменения' : 'Разместить здесь'}</button><button onClick={() => { setPlacementPoint(null); setHoverPoint(null); setEditingObjectId(null); }} className="rounded-xl bg-slate-100 px-3 py-2">Отмена</button></div>}
 
     {selected !== 'water' && placementPoint && <div className="absolute left-3 top-32 z-20 flex flex-wrap items-center gap-2 rounded-2xl bg-white/95 p-2 text-xs font-bold text-slate-800 shadow-xl sm:left-5 sm:text-sm"><button aria-label="Зеркально отразить предмет" aria-pressed={previewFlipped} onClick={() => animals.has(selected) ? setAnimalFacing(value => value === 'left' ? 'right' : 'left') : setMirrored(value => !value)} className={`rounded-xl px-3 py-2 ${previewFlipped ? 'bg-amber-300' : 'bg-amber-100'}`}>↔ Зеркально</button><div className="flex items-center gap-1" aria-label="Размер предмета"><button aria-label="Уменьшить предмет" disabled={objectScale <= 0.5} onClick={() => setObjectScale(value => Math.max(0.5, Math.round((value - 0.1) * 10) / 10))} className="rounded-xl bg-emerald-100 px-3 py-2 text-lg disabled:opacity-40">−</button><span className="min-w-10 text-center">{Math.round(objectScale * 100)}%</span><button aria-label="Увеличить предмет" disabled={objectScale >= 2} onClick={() => setObjectScale(value => Math.min(2, Math.round((value + 0.1) * 10) / 10))} className="rounded-xl bg-emerald-100 px-3 py-2 text-lg disabled:opacity-40">+</button></div></div>}
 
     {editingObjectId && placementPoint && <div className="absolute left-3 top-48 z-20 flex flex-wrap items-center gap-1 rounded-2xl bg-white/95 p-2 text-xs font-bold text-slate-800 shadow-xl sm:left-5 sm:text-sm"><span>Слой:</span><button aria-label="Опустить предмет на слой ниже" disabled={objectLayer <= -10} onClick={() => setObjectLayer(value => value - 1)} className="rounded-xl bg-violet-100 px-3 py-2 disabled:opacity-40">Ниже</button><span className="min-w-6 text-center">{objectLayer > 0 ? `+${objectLayer}` : objectLayer}</span><button aria-label="Поднять предмет на слой выше" disabled={objectLayer >= 10} onClick={() => setObjectLayer(value => value + 1)} className="rounded-xl bg-violet-100 px-3 py-2 disabled:opacity-40">Выше</button></div>}
 
-    <footer className="z-10 flex items-center justify-between gap-2 bg-[#153b3b] px-3 py-2 sm:px-5"><div className="flex min-w-0 items-center gap-1 text-xs font-bold sm:text-sm">{selected === 'water' ? <Droplets size={18} className="shrink-0 text-sky-300" /> : <img src={itemSpriteUrl(itemSprites[selected]!.file)} alt="" className="h-7 w-7 shrink-0 object-contain" />}<span>{selectedItem.name} {selected === 'water' ? `· в лейке ${world.water}` : `· в рюкзаке ${inventoryCount}`}</span></div><div className="flex gap-2"><button onClick={() => { setSelected('water'); setEditingObjectId(null); setPlacementPoint(null); }} className={`rounded-xl px-3 py-2 text-xs font-black ${selected === 'water' ? 'bg-sky-500' : 'bg-white/15'}`}><Droplets size={16} className="inline" /> Поливать</button><button onClick={() => setShopOpen(true)} className="rounded-xl bg-amber-400 px-3 py-2 text-xs font-black text-amber-950"><ShoppingBag size={16} className="inline" /> Магазин</button></div></footer>
+    <footer className="z-10 flex flex-wrap items-center justify-between gap-2 bg-[#153b3b] px-3 py-2 sm:flex-nowrap sm:px-5"><div className="flex w-full min-w-0 items-center gap-1 text-xs font-bold sm:w-auto sm:text-sm">{selected === 'water' ? <Droplets size={18} className="shrink-0 text-sky-300" /> : <img src={itemSpriteUrl(itemSprites[selected]!.file)} alt="" className="h-7 w-7 shrink-0 object-contain" />}<span>{selectedItem.name} {selected === 'water' ? `· в лейке ${world.water}` : `· в рюкзаке ${inventoryCount}`}</span></div><div className="flex w-full justify-end gap-2 sm:w-auto"><button onClick={toggleEditMode} aria-pressed={editMode} className={`rounded-xl px-3 py-2 text-xs font-black ${editMode ? "bg-violet-500 text-white" : "bg-white/15 text-white"}`}><Pencil size={16} className="inline" /> Изменить</button><button onClick={() => { setEditMode(false); setSelected('water'); setEditingObjectId(null); setPlacementPoint(null); }} className={`rounded-xl px-3 py-2 text-xs font-black ${selected === 'water' && !editMode ? 'bg-sky-500' : 'bg-white/15'}`}><Droplets size={16} className="inline" /> Поливать</button><button onClick={() => { setEditMode(false); setEditingObjectId(null); setPlacementPoint(null); setShopOpen(true); }} className="rounded-xl bg-amber-400 px-3 py-2 text-xs font-black text-amber-950"><ShoppingBag size={16} className="inline" /> Магазин</button></div></footer>
 
     {shopOpen && <div className="absolute inset-0 z-20 flex items-end justify-center bg-slate-950/60 p-2 sm:items-center" onPointerDown={event => event.stopPropagation()}>
       <section className="max-h-[86dvh] w-full max-w-3xl overflow-y-auto rounded-3xl bg-white p-4 text-slate-800 shadow-2xl sm:p-6" aria-label="Магазин пустыни">
@@ -314,8 +324,8 @@ export function DesertGame({ studentName, earned, desert, character, onAction, o
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">{DESERT_CATALOG.filter(item => shopSection === 'all' || item.category === shopSection).map(item => <div key={item.id} className="rounded-2xl border-2 border-emerald-100 bg-emerald-50 p-3 text-center">
           <div className="flex h-20 items-center justify-center" aria-hidden="true">{item.id === 'water' ? <Droplets size={42} className="text-sky-500" /> : <img src={itemSpriteUrl(itemSprites[item.id]!.file)} alt="" loading="lazy" className="h-full w-full object-contain" />}</div><div className="mt-1 text-sm font-black">{item.name}</div>
           <div className="text-xs font-bold text-amber-700">⭐ {item.id === 'water' ? item.price * waterQuantity : item.price}{item.id === 'water' ? ` · ${item.amount * waterQuantity} ${countWord(item.amount * waterQuantity, 'полив', 'полива', 'поливов')}` : ''}</div>
-          {item.id === 'water' ? <div className="mt-2 flex items-center gap-1"><button aria-label="Уменьшить количество воды" disabled={waterQuantity <= 1} onClick={() => setWaterQuantity(value => value - 1)} className="h-9 w-8 shrink-0 rounded-xl bg-white text-xl font-black text-sky-800 disabled:opacity-40">−</button><span className="min-w-5 text-center text-sm font-black text-sky-900" aria-label={`${waterQuantity} ${countWord(waterQuantity, 'набор', 'набора', 'наборов')} воды`}>{waterQuantity}</span><button aria-label="Увеличить количество воды" disabled={waterQuantity >= 20 || (waterQuantity + 1) * 20 > balance} onClick={() => setWaterQuantity(value => value + 1)} className="h-9 w-8 shrink-0 rounded-xl bg-white text-xl font-black text-sky-800 disabled:opacity-40">+</button><button disabled={busy || balance < item.price * waterQuantity} onClick={() => { setSelected('water'); setEditingObjectId(null); setFocusedObjectId(null); setPlacementPoint(null); setHoverPoint(null); void commit({ type: 'buy', itemId: 'water', quantity: waterQuantity }); }} className="h-9 min-w-0 flex-1 rounded-xl bg-emerald-600 px-1 text-xs font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300">Купить</button></div> : <button disabled={busy || balance < item.price} onClick={() => { setSelected(item.id); setEditingObjectId(null); setFocusedObjectId(null); setPlacementPoint(null); setHoverPoint(null); void commit({ type: 'buy', itemId: item.id }); }} className="mt-2 w-full rounded-xl bg-emerald-600 px-2 py-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300">Купить</button>}
-          {item.id !== 'water' && (world.inventory[item.id] || 0) > 0 && <button onClick={() => { setSelected(item.id); setEditingObjectId(null); setFocusedObjectId(null); setPlacementPoint(null); setHoverPoint(null); setShopOpen(false); setMessage('Наведи на землю, выбери место и посмотри на предмет перед размещением.'); }} className="mt-1 w-full rounded-xl bg-white px-2 py-2 text-xs font-black text-emerald-700">Разместить · {world.inventory[item.id]}</button>}
+          {item.id === 'water' ? <div className="mt-2 flex items-center gap-1"><button aria-label="Уменьшить количество воды" disabled={waterQuantity <= 1} onClick={() => setWaterQuantity(value => value - 1)} className="h-9 w-8 shrink-0 rounded-xl bg-white text-xl font-black text-sky-800 disabled:opacity-40">−</button><span className="min-w-5 text-center text-sm font-black text-sky-900" aria-label={`${waterQuantity} ${countWord(waterQuantity, 'набор', 'набора', 'наборов')} воды`}>{waterQuantity}</span><button aria-label="Увеличить количество воды" disabled={waterQuantity >= 20 || (waterQuantity + 1) * 20 > balance} onClick={() => setWaterQuantity(value => value + 1)} className="h-9 w-8 shrink-0 rounded-xl bg-white text-xl font-black text-sky-800 disabled:opacity-40">+</button><button disabled={busy || balance < item.price * waterQuantity} onClick={() => { setSelected('water'); setEditingObjectId(null); setPlacementPoint(null); setHoverPoint(null); void commit({ type: 'buy', itemId: 'water', quantity: waterQuantity }); }} className="h-9 min-w-0 flex-1 rounded-xl bg-emerald-600 px-1 text-xs font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300">Купить</button></div> : <button disabled={busy || balance < item.price} onClick={() => { setSelected(item.id); setEditingObjectId(null); setPlacementPoint(null); setHoverPoint(null); void commit({ type: 'buy', itemId: item.id }); }} className="mt-2 w-full rounded-xl bg-emerald-600 px-2 py-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300">Купить</button>}
+          {item.id !== 'water' && (world.inventory[item.id] || 0) > 0 && <button onClick={() => { setSelected(item.id); setEditingObjectId(null); setPlacementPoint(null); setHoverPoint(null); setShopOpen(false); setMessage('Наведи на землю, выбери место и посмотри на предмет перед размещением.'); }} className="mt-1 w-full rounded-xl bg-white px-2 py-2 text-xs font-black text-emerald-700">Разместить · {world.inventory[item.id]}</button>}
         </div>)}</div>
         <div className="mt-4 flex items-center gap-2 text-xs font-semibold text-emerald-800"><Sprout size={16} /> Мир и покупки сохраняются для этого ученика.</div>
       </section>
