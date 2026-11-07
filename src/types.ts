@@ -42,6 +42,7 @@ export interface Step4Config {
   canvasBg: string;
   promptWord?: string;
   paletteColors: string[];
+  drawingPages?: { backgroundImageDataUrl?: string }[];
 }
 
 export interface WordFillItem {

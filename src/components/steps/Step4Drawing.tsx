@@ -10,7 +10,10 @@ interface Props {
 }
 
 export const Step4Drawing: React.FC<Props> = ({ config, onNext, onPrev }) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const canvasRefs = useRef<(HTMLCanvasElement | null)[]>([]);
+  const [pageIndex, setPageIndex] = useState(0);
+  const pages = (config.drawingPages?.length ? config.drawingPages : [{}]).slice(0, 3);
+  const canvasRef = { current: canvasRefs.current[pageIndex] };
   const [currentColor, setCurrentColor] = useState<string>(config.paletteColors[0] || '#ef4444');
   const [isEraser, setIsEraser] = useState(false);
   const [lineWidth, setLineWidth] = useState(12);
@@ -19,17 +22,7 @@ export const Step4Drawing: React.FC<Props> = ({ config, onNext, onPrev }) => {
 
   const isDrawingRef = useRef(false);
 
-  // Initialize or clear canvas
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    // Fill with canvasBg
-    ctx.fillStyle = canvasBg;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-  }, [canvasBg]);
+  useEffect(() => { setPageIndex(0); }, [config]);
 
   const getCanvasCoords = (e: React.MouseEvent | React.TouchEvent) => {
     const canvas = canvasRef.current;
@@ -68,7 +61,8 @@ export const Step4Drawing: React.FC<Props> = ({ config, onNext, onPrev }) => {
     ctx.lineWidth = lineWidth;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.strokeStyle = isEraser ? canvasBg : currentColor;
+    ctx.globalCompositeOperation = isEraser ? 'destination-out' : 'source-over';
+    ctx.strokeStyle = currentColor;
     ctx.lineTo(coords.x, coords.y);
     ctx.stroke();
     ctx.beginPath();
@@ -88,8 +82,7 @@ export const Step4Drawing: React.FC<Props> = ({ config, onNext, onPrev }) => {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    ctx.fillStyle = canvasBg;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     setMessage(null);
   };
 
@@ -106,6 +99,7 @@ export const Step4Drawing: React.FC<Props> = ({ config, onNext, onPrev }) => {
       <p className="text-xs md:text-sm text-slate-600 mb-3 text-center">
         {config.instruction}
       </p>
+      {pages.length > 1 && <div className="mb-3 flex gap-2" aria-label="Экраны для рисования">{pages.map((_, index) => <button key={index} onClick={() => { stopDrawing(); setPageIndex(index); setMessage(null); }} className={`rounded-xl px-3 py-1.5 text-xs font-bold ${pageIndex === index ? 'bg-pink-500 text-white' : 'bg-white text-pink-700'}`}>Экран {index + 1}</button>)}</div>}
 
       {/* Palette Colors */}
       <div className="flex flex-wrap items-center justify-center gap-2 p-2.5 bg-white/90 rounded-2xl border-2 border-dashed border-pink-200 mb-3 shadow-xs">
@@ -140,9 +134,10 @@ export const Step4Drawing: React.FC<Props> = ({ config, onNext, onPrev }) => {
       <div className="mb-3 flex flex-wrap items-center justify-center gap-2 text-[10px] font-black text-slate-500"><span>Фон поля:</span>{['#ffffff', '#e0f2fe', '#fef3c7', '#dcfce7', '#334155'].map(color => <button key={color} onClick={() => setCanvasBg(color)} aria-label={`Фон ${color}`} style={{ backgroundColor: color }} className={`h-6 w-6 rounded-full border-2 ${canvasBg === color ? 'border-pink-500 ring-2 ring-pink-200' : 'border-slate-300'}`} />)}</div>
 
       {/* Canvas */}
-      <div className="relative rounded-2xl overflow-hidden shadow-lg border-4 border-white mb-3">
-        <canvas
-          ref={canvasRef}
+      <div className="relative rounded-2xl overflow-hidden shadow-lg border-4 border-white mb-3" style={{ backgroundColor: canvasBg, backgroundImage: pages[pageIndex]?.backgroundImageDataUrl ? `url('${pages[pageIndex].backgroundImageDataUrl}')` : undefined, backgroundPosition: 'center', backgroundSize: 'contain', backgroundRepeat: 'no-repeat' }}>
+        {pages.map((_, index) => <canvas
+          key={index}
+          ref={element => { canvasRefs.current[index] = element; }}
           width={280}
           height={260}
           onMouseDown={startDrawing}
@@ -152,9 +147,10 @@ export const Step4Drawing: React.FC<Props> = ({ config, onNext, onPrev }) => {
           onTouchStart={startDrawing}
           onTouchMove={draw}
           onTouchEnd={stopDrawing}
-          className="cursor-crosshair touch-none select-none block"
+          className={`cursor-crosshair touch-none select-none ${pageIndex === index ? 'block' : 'hidden'}`}
           style={{ width: '280px', height: '260px' }}
-        />
+          aria-label={`Поле для рисования, экран ${index + 1}`}
+        />)}
       </div>
 
       {/* Controls */}

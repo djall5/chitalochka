@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { DrawingPagesEditor } from '../DrawingPagesEditor';
 import { LessonData, PaletteItem, WordFillItem, ReadingCardItem } from '../../types';
 import { autoGenerateMazeGrid, autoGenerateSyllableGrid } from '../../utils/generators';
 import { emojiForWord, emojiOptionsForWord } from '../../utils/lessonContent';
@@ -853,6 +854,7 @@ export const LessonEditor: React.FC<Props> = ({
         {/* TAB: STEP 4 (Drawing) */}
         {activeTab === 'step4' && (
           <div className="space-y-4">
+            <DrawingPagesEditor config={data.step4} onChange={drawingPages => setData(previous => ({ ...previous, step4: { ...previous.step4, drawingPages } }))} />
             <div>
               <label className="block text-xs font-bold text-slate-600 mb-1">
                 Заголовок
