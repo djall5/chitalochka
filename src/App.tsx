@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Award, BookOpen, Check, Edit3, Library, LogOut, MousePointer2, Play, Volume2, VolumeX } from 'lucide-react';
+import { Award, BookOpen, Check, Edit3, Library, Loader2, LogOut, MousePointer2, Play, Volume2, VolumeX } from 'lucide-react';
 import { LessonData, LessonStatus } from './types';
 import { defaultLessonY } from './defaultLessons';
 import { Step1Coloring } from './components/steps/Step1Coloring';
@@ -213,6 +213,8 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
   const savedStudentEditVersionRef = useRef(0);
   const [cloudSaveState, setCloudSaveState] = useState<'saved' | 'saving' | 'error'>('saved');
   const [saveRetryKey, setSaveRetryKey] = useState(0);
+  const [lessonSaveInProgress, setLessonSaveInProgress] = useState(false);
+  const lessonSaveInProgressRef = useRef(false);
 
   const collaboration = useLessonRoom({
     onState: incoming => {
@@ -507,24 +509,40 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
   };
 
   const handleSaveLesson = async (updated: LessonData) => {
-    const savedLesson = { ...updated, isDraft: updated.isDraft && !updated.title.trim() };
-    setLesson(savedLesson);
-    const exists = lessons.some(item => item.id === savedLesson.id);
-    const nextStudents = updateActiveStudentLessons(exists ? lessons.map(item => item.id === savedLesson.id ? cloneLesson(savedLesson) : item) : [cloneLesson(savedLesson), ...lessons]);
-    const synced = await saveWorkspaceNow({ students: nextStudents || students, games, lesson: savedLesson, activeStudentId });
-    showToast(synced ? 'Урок сохранён в библиотеку и облако' : 'Урок сохранён в библиотеку');
+    if (lessonSaveInProgressRef.current) return;
+    lessonSaveInProgressRef.current = true;
+    setLessonSaveInProgress(true);
+    try {
+      const savedLesson = { ...updated, isDraft: updated.isDraft && !updated.title.trim() };
+      setLesson(savedLesson);
+      const exists = lessons.some(item => item.id === savedLesson.id);
+      const nextStudents = updateActiveStudentLessons(exists ? lessons.map(item => item.id === savedLesson.id ? cloneLesson(savedLesson) : item) : [cloneLesson(savedLesson), ...lessons]);
+      const synced = await saveWorkspaceNow({ students: nextStudents || students, games, lesson: savedLesson, activeStudentId });
+      showToast(synced ? 'Урок сохранён в библиотеку и облако' : 'Урок сохранён в библиотеку');
+    } finally {
+      lessonSaveInProgressRef.current = false;
+      setLessonSaveInProgress(false);
+    }
   };
 
   const handleSaveBuiltLesson = async (updated: LessonData, playAfterSave: boolean) => {
-    const savedLesson = { ...updated, isDraft: updated.isDraft && !updated.title.trim() };
-    setLesson(savedLesson);
-    setCurrentStep(0);
-    const exists = lessons.some(item => item.id === savedLesson.id);
-    const nextStudents = updateActiveStudentLessons(exists ? lessons.map(item => item.id === savedLesson.id ? cloneLesson(savedLesson) : item) : [cloneLesson(savedLesson), ...lessons]);
-    const synced = await saveWorkspaceNow({ students: nextStudents || students, games, lesson: savedLesson, activeStudentId });
-    showToast(synced ? 'Урок добавлен в библиотеку и облако' : 'Урок добавлен в библиотеку');
-    if (playAfterSave) resetSessionScore();
-    setScreen(playAfterSave ? 'play' : 'library');
+    if (lessonSaveInProgressRef.current) return;
+    lessonSaveInProgressRef.current = true;
+    setLessonSaveInProgress(true);
+    try {
+      const savedLesson = { ...updated, isDraft: updated.isDraft && !updated.title.trim() };
+      setLesson(savedLesson);
+      setCurrentStep(0);
+      const exists = lessons.some(item => item.id === savedLesson.id);
+      const nextStudents = updateActiveStudentLessons(exists ? lessons.map(item => item.id === savedLesson.id ? cloneLesson(savedLesson) : item) : [cloneLesson(savedLesson), ...lessons]);
+      const synced = await saveWorkspaceNow({ students: nextStudents || students, games, lesson: savedLesson, activeStudentId });
+      showToast(synced ? 'Урок добавлен в библиотеку и облако' : 'Урок добавлен в библиотеку');
+      if (playAfterSave) resetSessionScore();
+      setScreen(playAfterSave ? 'play' : 'library');
+    } finally {
+      lessonSaveInProgressRef.current = false;
+      setLessonSaveInProgress(false);
+    }
   };
 
   const handlePreviewBuiltLesson = (updated: LessonData) => {
@@ -750,6 +768,13 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
 
   return (
     <div className="min-h-screen w-full flex flex-col items-center justify-between p-3 md:p-6 bg-cover bg-center bg-no-repeat relative font-sans text-slate-800" style={{ backgroundImage: `linear-gradient(rgba(253, 232, 244, 0.75), rgba(245, 235, 255, 0.82)), url('https://images.unsplash.com/photo-1503676260728-1c00da094a0b?auto=format&fit=crop&w=1920&q=80')`, backgroundAttachment: 'fixed' }}>
+      {lessonSaveInProgress && <div className="fixed inset-0 z-[100] grid place-items-center bg-slate-900/45 p-5 backdrop-blur-sm" role="status" aria-live="assertive" aria-label="Сохраняем урок">
+        <div className="w-full max-w-sm rounded-3xl border-2 border-pink-100 bg-white px-7 py-8 text-center shadow-2xl">
+          <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-pink-50 text-pink-600"><Loader2 className="h-7 w-7 animate-spin" /></div>
+          <h2 className="mt-4 text-lg font-black text-slate-800">Сохраняем урок…</h2>
+          <p className="mt-2 text-sm font-semibold leading-relaxed text-slate-500">Отправляем изменения в облако. Пожалуйста, не закрывайте страницу и не нажимайте кнопки — это может занять несколько секунд.</p>
+        </div>
+      </div>}
       {toastMessage && <div className="fixed top-4 right-4 z-50 bg-slate-900/90 text-white font-bold text-xs md:text-sm px-4 py-2.5 rounded-2xl shadow-xl flex items-center gap-2 border border-white/20"><Check className="w-4 h-4 text-emerald-400" />{toastMessage}</div>}
 
       <header className={`w-full ${wide ? 'max-w-6xl' : 'max-w-2xl'} bg-white/90 backdrop-blur-md rounded-2xl px-3 py-2 md:px-5 md:py-2.5 shadow-md border-2 border-pink-200 flex flex-wrap items-center justify-between gap-2 mb-4`}>
