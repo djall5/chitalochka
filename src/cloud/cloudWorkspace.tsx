@@ -12,6 +12,11 @@ export type WorkspaceSnapshot = {
   activeStudentId: string | null;
 };
 
+export type LessonMediaProgress = {
+  completed: number;
+  total: number;
+};
+
 export type CloudWorkspace = {
   configured: boolean;
   session: Session | null;
@@ -21,6 +26,7 @@ export type CloudWorkspace = {
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  prepareMedia: (snapshot: WorkspaceSnapshot, onProgress?: (progress: LessonMediaProgress) => void) => Promise<WorkspaceSnapshot>;
   save: (snapshot: WorkspaceSnapshot) => Promise<void>;
   refresh: () => Promise<WorkspaceSnapshot | null>;
   reload: () => void;
@@ -34,9 +40,77 @@ export type StudentPortalData = {
 const url = import.meta.env.VITE_SUPABASE_URL;
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 const client: SupabaseClient | null = url && key ? createClient(url, key) : null;
+const LESSON_MEDIA_BUCKET = 'lesson-media';
+const MEDIA_DATA_URL_KEYS = new Set(['backgroundImageDataUrl', 'imageDataUrl', 'regionMapDataUrl', 'videoDataUrl']);
+
+type MediaReference = { parent: Record<string, unknown>; key: string; dataUrl: string };
 
 export function getCloudClient() {
   return client;
+}
+
+function findMediaReferences(value: unknown, references: MediaReference[] = []): MediaReference[] {
+  if (Array.isArray(value)) {
+    value.forEach(item => findMediaReferences(item, references));
+    return references;
+  }
+  if (!value || typeof value !== 'object') return references;
+  const record = value as Record<string, unknown>;
+  for (const [key, child] of Object.entries(record)) {
+    if (MEDIA_DATA_URL_KEYS.has(key) && typeof child === 'string' && child.startsWith('data:')) {
+      references.push({ parent: record, key, dataUrl: child });
+    } else {
+      findMediaReferences(child, references);
+    }
+  }
+  return references;
+}
+
+function fileExtension(dataUrl: string, mimeType: string) {
+  const declaredMime = /^data:([^;,]+)/i.exec(dataUrl)?.[1]?.toLowerCase() || mimeType.toLowerCase();
+  const extensions: Record<string, string> = {
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+    'image/gif': 'gif',
+    'video/mp4': 'mp4',
+    'video/webm': 'webm',
+  };
+  return extensions[declaredMime] || 'bin';
+}
+
+/**
+ * Moves embedded lesson files out of JSON before saving the workspace. Existing
+ * lessons keep working because components accept both data URLs and HTTPS URLs.
+ */
+async function moveLessonMediaToStorage(snapshot: WorkspaceSnapshot, userId: string, onProgress?: (progress: LessonMediaProgress) => void) {
+  if (!client) return snapshot;
+  const prepared = JSON.parse(JSON.stringify(snapshot)) as WorkspaceSnapshot;
+  const references = findMediaReferences(prepared);
+  const uniqueDataUrls = [...new Set(references.map(reference => reference.dataUrl))];
+  if (!uniqueDataUrls.length) return prepared;
+
+  const uploadedUrls = new Map<string, string>();
+  let completed = 0;
+  onProgress?.({ completed, total: uniqueDataUrls.length });
+  for (const dataUrl of uniqueDataUrls) {
+    const response = await fetch(dataUrl);
+    const file = await response.blob();
+    const extension = fileExtension(dataUrl, file.type || 'application/octet-stream');
+    const path = `${userId}/${crypto.randomUUID()}.${extension}`;
+    const { error } = await client.storage.from(LESSON_MEDIA_BUCKET).upload(path, file, {
+      cacheControl: '31536000',
+      contentType: file.type || 'application/octet-stream',
+      upsert: false,
+    });
+    if (error) throw new Error(`Не удалось загрузить файл урока: ${error.message}`);
+    const { data } = client.storage.from(LESSON_MEDIA_BUCKET).getPublicUrl(path);
+    uploadedUrls.set(dataUrl, data.publicUrl);
+    completed += 1;
+    onProgress?.({ completed, total: uniqueDataUrls.length });
+  }
+  references.forEach(reference => { reference.parent[reference.key] = uploadedUrls.get(reference.dataUrl) || reference.dataUrl; });
+  return prepared;
 }
 
 async function hashPortalToken(token: string) {
@@ -219,6 +293,10 @@ export function useCloudWorkspace() {
       if (!client) return;
       const { error } = await client.auth.signOut();
       if (error) throw error;
+    },
+    prepareMedia: async (nextSnapshot, onProgress) => {
+      if (!client || !session?.user) return nextSnapshot;
+      return moveLessonMediaToStorage(nextSnapshot, session.user.id, onProgress);
     },
     save: async (nextSnapshot) => {
       if (!client || !session?.user) return;

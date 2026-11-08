@@ -214,6 +214,7 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
   const [cloudSaveState, setCloudSaveState] = useState<'saved' | 'saving' | 'error'>('saved');
   const [saveRetryKey, setSaveRetryKey] = useState(0);
   const [lessonSaveInProgress, setLessonSaveInProgress] = useState(false);
+  const [lessonSaveMessage, setLessonSaveMessage] = useState('Отправляем изменения в облако.');
   const lessonSaveInProgressRef = useRef(false);
 
   const collaboration = useLessonRoom({
@@ -508,16 +509,41 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
     }));
   };
 
+  const prepareLessonSave = async (updated: LessonData) => {
+    const pendingLesson = { ...updated, isDraft: updated.isDraft && !updated.title.trim() };
+    const exists = lessons.some(item => item.id === pendingLesson.id);
+    const pendingLessons = exists
+      ? lessons.map(item => item.id === pendingLesson.id ? cloneLesson(pendingLesson) : item)
+      : [cloneLesson(pendingLesson), ...lessons];
+    const pendingStudents = activeStudent
+      ? students.map(student => student.id === activeStudent.id ? { ...student, lessons: pendingLessons.map(cloneLesson) } : student)
+      : students;
+    setLessonSaveMessage('Проверяем файлы урока…');
+    try {
+      return await cloud.prepareMedia({ students: pendingStudents, games, lesson: pendingLesson, activeStudentId }, progress => {
+        setLessonSaveMessage(progress.total
+          ? `Загружаем файлы урока: ${progress.completed} из ${progress.total}…`
+          : 'Отправляем изменения в облако…');
+      });
+    } catch (error) {
+      console.warn('Не удалось вынести файлы урока в отдельное хранилище', error);
+      setLessonSaveMessage('Сохраняем урок обычным способом…');
+      showToast('Файлы пока сохраняются обычным способом — данные урока не потеряны.');
+      return { students: pendingStudents, games, lesson: pendingLesson, activeStudentId };
+    }
+  };
+
   const handleSaveLesson = async (updated: LessonData) => {
     if (lessonSaveInProgressRef.current) return;
     lessonSaveInProgressRef.current = true;
     setLessonSaveInProgress(true);
     try {
-      const savedLesson = { ...updated, isDraft: updated.isDraft && !updated.title.trim() };
+      const prepared = await prepareLessonSave(updated);
+      const savedLesson = prepared.lesson;
       setLesson(savedLesson);
-      const exists = lessons.some(item => item.id === savedLesson.id);
-      const nextStudents = updateActiveStudentLessons(exists ? lessons.map(item => item.id === savedLesson.id ? cloneLesson(savedLesson) : item) : [cloneLesson(savedLesson), ...lessons]);
-      const synced = await saveWorkspaceNow({ students: nextStudents || students, games, lesson: savedLesson, activeStudentId });
+      if (activeStudent) persistStudents(prepared.students);
+      setLessonSaveMessage('Сохраняем урок в облаке…');
+      const synced = await saveWorkspaceNow(prepared);
       showToast(synced ? 'Урок сохранён в библиотеку и облако' : 'Урок сохранён в библиотеку');
     } finally {
       lessonSaveInProgressRef.current = false;
@@ -530,12 +556,13 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
     lessonSaveInProgressRef.current = true;
     setLessonSaveInProgress(true);
     try {
-      const savedLesson = { ...updated, isDraft: updated.isDraft && !updated.title.trim() };
+      const prepared = await prepareLessonSave(updated);
+      const savedLesson = prepared.lesson;
       setLesson(savedLesson);
       setCurrentStep(0);
-      const exists = lessons.some(item => item.id === savedLesson.id);
-      const nextStudents = updateActiveStudentLessons(exists ? lessons.map(item => item.id === savedLesson.id ? cloneLesson(savedLesson) : item) : [cloneLesson(savedLesson), ...lessons]);
-      const synced = await saveWorkspaceNow({ students: nextStudents || students, games, lesson: savedLesson, activeStudentId });
+      if (activeStudent) persistStudents(prepared.students);
+      setLessonSaveMessage('Сохраняем урок в облаке…');
+      const synced = await saveWorkspaceNow(prepared);
       showToast(synced ? 'Урок добавлен в библиотеку и облако' : 'Урок добавлен в библиотеку');
       if (playAfterSave) resetSessionScore();
       setScreen(playAfterSave ? 'play' : 'library');
@@ -772,7 +799,7 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
         <div className="w-full max-w-sm rounded-3xl border-2 border-pink-100 bg-white px-7 py-8 text-center shadow-2xl">
           <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-pink-50 text-pink-600"><Loader2 className="h-7 w-7 animate-spin" /></div>
           <h2 className="mt-4 text-lg font-black text-slate-800">Сохраняем урок…</h2>
-          <p className="mt-2 text-sm font-semibold leading-relaxed text-slate-500">Отправляем изменения в облако. Пожалуйста, не закрывайте страницу и не нажимайте кнопки — это может занять несколько секунд.</p>
+          <p className="mt-2 text-sm font-semibold leading-relaxed text-slate-500">{lessonSaveMessage} Пожалуйста, не закрывайте страницу и не нажимайте кнопки — это может занять несколько секунд.</p>
         </div>
       </div>}
       {toastMessage && <div className="fixed top-4 right-4 z-50 bg-slate-900/90 text-white font-bold text-xs md:text-sm px-4 py-2.5 rounded-2xl shadow-xl flex items-center gap-2 border border-white/20"><Check className="w-4 h-4 text-emerald-400" />{toastMessage}</div>}
