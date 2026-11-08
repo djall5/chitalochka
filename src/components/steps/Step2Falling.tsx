@@ -49,8 +49,10 @@ export const Step2Falling: React.FC<Props> = ({ config, onNext, onPrev, onCorrec
       const randomIndex = Math.floor(random() * (index + 1));
       [shuffled[index], shuffled[randomIndex]] = [shuffled[randomIndex], shuffled[index]];
     }
-    // Limit to targetCatchCount if provided
-    const pool = shuffled.slice(0, Math.max(config.targetCatchCount, 6));
+    // The editor defines the exact number of cards in a round. Older lessons
+    // may contain fewer configured syllables, so never invent extra cards.
+    const requestedCount = Math.max(1, config.targetCatchCount || shuffled.length);
+    const pool = shuffled.slice(0, requestedCount);
     setRemainingPool(pool);
     setCaught(0);
     setMissed(0);
@@ -154,7 +156,7 @@ export const Step2Falling: React.FC<Props> = ({ config, onNext, onPrev, onCorrec
     }, 280);
   };
 
-  const totalSyllables = Math.max(config.targetCatchCount, 6);
+  const totalSyllables = Math.min(config.syllables.length, Math.max(1, config.targetCatchCount || config.syllables.length));
 
   return (
     <div className="flex flex-col items-center w-full max-w-lg">

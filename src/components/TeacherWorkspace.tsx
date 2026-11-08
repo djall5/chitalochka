@@ -4,7 +4,7 @@ import { LessonData, LessonStatus, MemoryPair, ReadAndChooseTask, ReadingTextPag
 import { cloneLesson, GameLibraryItem, GameStepKey, lessonGameOrder } from '../gameLibrary';
 import { applyLetterToSelectedGames, isRussianLetter } from '../letterLesson';
 import { syllabifyRussian } from '../utils/syllabifyRussian';
-import { emojiForWord, emojiOptionsForWord, generateSyllables, generateSyllablesPreservingCase, makePreschoolText, mascotForLetters } from '../utils/lessonContent';
+import { emojiForWord, emojiOptionsForWord, generateSyllablesPreservingCase, makePreschoolText, mascotForLetters } from '../utils/lessonContent';
 import { autoGenerateMazeGrid, autoGenerateSyllableGrid } from '../utils/generators';
 import { generateRocketStages, parseRocketConsonants, parseRocketVowels } from '../utils/rocketSyllables';
 import { ColoringEditor } from './ColoringEditor';
@@ -288,6 +288,7 @@ function GameContentEditor({ game, lesson, onChange, onSave, onCancel }: GameCon
   const [imageError, setImageError] = useState('');
   const [activeTextPageId, setActiveTextPageId] = useState(() => lesson.step7.pages[0]?.id || '');
   const [emojiPickerCardId, setEmojiPickerCardId] = useState<string | null>(null);
+  const [fallingSyllableDraft, setFallingSyllableDraft] = useState(() => lesson.step2.syllables.join(', '));
   const [speedSyllableDraft, setSpeedSyllableDraft] = useState(() => lesson.step11.syllables.join(', '));
   const stepKey = game.stepKey;
   const activeTextPage = lesson.step7.pages.find(page => page.id === activeTextPageId) || lesson.step7.pages[0];
@@ -325,6 +326,9 @@ function GameContentEditor({ game, lesson, onChange, onSave, onCancel }: GameCon
   useEffect(() => {
     if (!lesson.step7.pages.some(page => page.id === activeTextPageId)) setActiveTextPageId(lesson.step7.pages[0]?.id || '');
   }, [lesson.step7.pages, activeTextPageId]);
+  useEffect(() => {
+    if (stepKey === 'step2') setFallingSyllableDraft(lesson.step2.syllables.join(', '));
+  }, [stepKey, lesson.step2.syllables.join(', ')]);
   useEffect(() => {
     if (stepKey === 'step11') setSpeedSyllableDraft(lesson.step11.syllables.join(', '));
   }, [stepKey, lesson.step11.syllables.join(', ')]);
@@ -401,7 +405,27 @@ function GameContentEditor({ game, lesson, onChange, onSave, onCancel }: GameCon
 
         {stepKey === 'step1' && <div className="space-y-3 rounded-2xl bg-pink-50/60 p-4"><h3 className="text-xs font-black text-pink-700">Слоги и образцы</h3><p className="text-[10px] font-semibold text-slate-500">Заполните образцы — карточки появятся сами и будут состоять только из этих слогов.</p><label className="block text-[11px] font-bold text-slate-600">Карточки · создаются автоматически<textarea readOnly className={`${inputClass} cursor-default bg-slate-50 text-slate-500`} rows={2} value={lesson.step1.cells.join(', ')} /></label><div className="grid gap-2 sm:grid-cols-2">{lesson.step1.palette.map((item, index) => <label key={item.id} className="text-[10px] font-bold text-slate-500">Образец {index + 1}<input className={inputClass} value={item.syllable} onChange={event => updateStep1PaletteSyllable(index, event.target.value)} /></label>)}</div></div>}
 
-        {stepKey === 'step2' && <div className="grid gap-3 rounded-2xl bg-pink-50/60 p-4 sm:grid-cols-2"><label className="text-[11px] font-bold text-slate-600">Буквы для автоматических слогов<input className={inputClass} value={lesson.step2.practiceLetters || ''} onChange={event => updateConfig({ practiceLetters: event.target.value })} placeholder="Например, М, А, С" /></label><div className="flex items-end"><button className={lightButton} onClick={() => { const syllables = generateSyllables(lesson.step2.practiceLetters || ''); updateConfig({ syllables, targetCatchCount: Math.max(1, syllables.length) }); }}>✨ Сгенерировать слоги</button></div><label className="text-[11px] font-bold text-slate-600 sm:col-span-2">Слоги для ловли · можно исправить вручную<input className={inputClass} value={lesson.step2.syllables.join(', ')} onChange={event => updateConfig({ syllables: event.target.value.split(/[,;\s]+/).map(item => item.trim()).filter(Boolean) })} /></label><label className="text-[11px] font-bold text-slate-600">Количество слогов<input type="number" min={1} max={30} className={inputClass} value={lesson.step2.targetCatchCount} onChange={event => updateConfig({ targetCatchCount: Number(event.target.value) })} /></label><label className="text-[11px] font-bold text-slate-600">Скорость<select className={inputClass} value={lesson.step2.speed} onChange={event => updateConfig({ speed: event.target.value })}><option value="slow">Медленно</option><option value="medium">Спокойно</option><option value="fast">Быстрее</option></select></label></div>}
+        {stepKey === 'step2' && (() => {
+          const targetCount = Math.max(1, Math.min(16, lesson.step2.targetCatchCount || 1));
+          const parseSyllables = (value: string) => value.split(',').map(item => item.trim()).filter(Boolean);
+          const syncSyllableDraft = (value: string) => {
+            const formatted = value.replace(/[;\s]+/g, ', ').replace(/,\s*/g, ', ');
+            const syllables = parseSyllables(formatted);
+            setFallingSyllableDraft(formatted);
+            updateConfig({ syllables, targetCatchCount: Math.max(1, syllables.length) });
+          };
+          const addSyllableSeparator = () => {
+            const withoutTrailingSeparator = fallingSyllableDraft.trimEnd().replace(/,+$/, '');
+            if (!withoutTrailingSeparator) return;
+            syncSyllableDraft(`${withoutTrailingSeparator}, `);
+          };
+          const regenerate = () => {
+            const syllables = generateSyllablesPreservingCase(lesson.step2.practiceLetters || '', targetCount);
+            setFallingSyllableDraft(syllables.join(', '));
+            updateConfig({ syllables, targetCatchCount: targetCount });
+          };
+          return <div className="space-y-3 rounded-2xl bg-pink-50/60 p-4"><div><h3 className="text-xs font-black text-pink-700">Настройки игры «Поймай слоги»</h3><p className="mt-1 text-[10px] font-semibold text-slate-500">Введите количество, затем нажмите «Сгенерировать слоги» — в игре будет ровно столько слогов.</p></div><div className="grid gap-3 sm:grid-cols-2"><label className="text-[11px] font-bold text-slate-600">Буквы для автоматических слогов<input className={inputClass} value={lesson.step2.practiceLetters || ''} onChange={event => updateConfig({ practiceLetters: event.target.value })} placeholder="Например, М, А, С" /></label><label className="text-[11px] font-bold text-slate-600">Сколько слогов сгенерировать<input type="number" min={1} max={16} className={inputClass} value={targetCount} onChange={event => updateConfig({ targetCatchCount: Math.max(1, Math.min(16, Number(event.target.value) || 1)) })} /></label><div className="flex items-end"><button className={lightButton} onClick={regenerate}>✨ Сгенерировать слоги</button></div><label className="text-[11px] font-bold text-slate-600">Скорость<select className={inputClass} value={lesson.step2.speed} onChange={event => updateConfig({ speed: event.target.value })}><option value="slow">Медленно</option><option value="medium">Спокойно</option><option value="fast">Быстрее</option></select></label></div><label className="block rounded-xl bg-white p-3 text-[11px] font-bold text-slate-600">Слоги для ловли · {lesson.step2.syllables.length}<input className={inputClass} value={fallingSyllableDraft} onKeyDown={event => { if (event.key === ' ') { event.preventDefault(); addSyllableSeparator(); } }} onChange={event => syncSyllableDraft(event.target.value)} placeholder="Например, МА, МО, МУ" /><span className="mt-1 flex flex-wrap items-center gap-2 text-[10px] font-semibold text-slate-400">Пробел после слога добавляет запятую для следующего.<button type="button" className="font-black text-pink-700 hover:underline" onClick={addSyllableSeparator}>+ Добавить слог</button></span></label></div>;
+        })()}
 
         {stepKey === 'step3' && (() => { const letters = [...new Set((lesson.step3.targetLetters?.length ? lesson.step3.targetLetters : [lesson.step3.targetLetter]).map(letter => letter.trim()).filter(Boolean))].slice(0, 2); const setLetters = (next: string[]) => { const targetLetters = [...new Set(next.map(letter => letter.match(/[А-Яа-яЁё]/)?.[0] || '').filter(Boolean))].slice(0, 2); updateConfig({ targetLetter: targetLetters[0] || '', targetLetters, mascot: mascotForLetters(targetLetters.join('')) }); }; return <div className="space-y-3 rounded-2xl bg-pink-50/60 p-4"><div className="grid gap-3 sm:grid-cols-2"><label className="text-[11px] font-bold text-slate-600">Буква 1 · своя клетка<input maxLength={1} className={inputClass} value={letters[0] || ''} onChange={event => setLetters([event.target.value, letters[1] || ''])} placeholder="Например, М" /></label>{letters.length > 1 ? <label className="text-[11px] font-bold text-slate-600">Буква 2 · отдельные клетки<input maxLength={1} className={inputClass} value={letters[1]} onChange={event => setLetters([letters[0] || '', event.target.value])} placeholder="Например, А" /></label> : <div className="flex items-end"><button className={lightButton} onClick={() => setLetters([letters[0] || lesson.step3.targetLetter || 'А', (letters[0] || lesson.step3.targetLetter).toLocaleUpperCase('ru-RU') === 'А' ? 'О' : 'А'])}><Plus className="h-3.5 w-3.5" />Добавить букву</button></div>}<label className="text-[11px] font-bold text-slate-600">Герой-талисман<input className={inputClass} value={lesson.step3.mascot} onChange={event => updateConfig({ mascot: event.target.value })} /></label>{letters.length > 1 && <div className="flex items-end"><button className={lightButton} onClick={() => setLetters([letters[0]])}><X className="h-3.5 w-3.5" />Убрать вторую</button></div>}</div><div className="flex flex-wrap items-center gap-2"><button className={lightButton} onClick={() => { const pathLetters = letters.length ? letters : [lesson.step3.targetLetter || 'А']; updateConfig({ cells: autoGenerateMazeGrid(lesson.step3.gridRows, lesson.step3.gridCols, pathLetters), mascot: mascotForLetters(pathLetters.join('')) }); }}>✨ Сгенерировать лабиринт</button><span className="text-[10px] font-semibold text-slate-500">Каждая буква стоит в своих клетках; при двух буквах они чередуются на дорожке.</span></div><div className="grid max-w-xs gap-1.5 rounded-xl border border-pink-200 bg-white p-2" style={{ gridTemplateColumns: `repeat(${lesson.step3.gridCols}, minmax(0, 1fr))` }}>{lesson.step3.cells.flatMap((row, rowIndex) => row.map((letter, columnIndex) => <span key={`${rowIndex}-${columnIndex}`} className={`flex aspect-square items-center justify-center rounded-md text-xs font-black ${letter.toLocaleUpperCase('ru-RU') === letters[0]?.toLocaleUpperCase('ru-RU') ? 'bg-sky-100 text-sky-700' : letter.toLocaleUpperCase('ru-RU') === letters[1]?.toLocaleUpperCase('ru-RU') ? 'bg-emerald-100 text-emerald-700' : 'bg-pink-50 text-pink-700'}`}>{letter}</span>))}</div></div>; })()}
 

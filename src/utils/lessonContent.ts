@@ -116,7 +116,7 @@ export function generateSyllablesPreservingCase(value: string, count = 16) {
   const usedConsonants = consonants.length
     ? consonants
     : [isLowercase(vowels[0] || letters[0] || 'А') ? 'м' : 'М'];
-  const desiredCount = Math.max(2, Math.min(16, Number.isFinite(count) ? Math.floor(count) : 16));
+  const desiredCount = Math.max(1, Math.min(16, Number.isFinite(count) ? Math.floor(count) : 16));
   const vowelPool = [...new Map([...usedVowels, ...fallbackVowels].map(vowel => [vowel, vowel])).values()];
   // A teacher may request up to sixteen cards even when they are practising
   // just one consonant. Add the reverse open syllables as a second, still
