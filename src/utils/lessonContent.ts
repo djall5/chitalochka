@@ -97,34 +97,33 @@ export function generateSyllables(value: string) {
 }
 
 /**
- * Make simple syllables for the timed syllable game without rewriting the
- * teacher's text.  In particular, lowercase input stays lowercase in the
- * result — normalisation is only used to recognise vowels and consonants.
+ * Make simple syllables without rewriting the teacher's text. Comma- or
+ * space-separated entries are units: "пр" stays an onset cluster and "ао"
+ * stays a vowel group. Lowercase input also stays lowercase in the result.
  */
 export function generateSyllablesPreservingCase(value: string, count = 16) {
-  const letters = [...value].filter(letter => /[А-Яа-яЁё]/u.test(letter));
-  const uniqueLetters = [...new Map(letters.map(letter => [letter, letter])).values()];
+  const groups = value
+    .split(/[,;\s]+/)
+    .map(group => [...group].filter(letter => /[А-Яа-яЁё]/u.test(letter)).join(''))
+    .filter(Boolean);
   const uppercase = (letter: string) => letter.toLocaleUpperCase('ru-RU');
-  const vowels = uniqueLetters.filter(letter => VOWELS.has(uppercase(letter)));
-  const consonants = uniqueLetters.filter(letter => {
+  const hasOnlyVowels = (group: string) => [...group].every(letter => VOWELS.has(uppercase(letter)));
+  const hasOnlyConsonants = (group: string) => [...group].every(letter => {
     const normalized = uppercase(letter);
     return !VOWELS.has(normalized) && normalized !== 'Ь' && normalized !== 'Ъ';
   });
-  const isLowercase = (letter: string) => letter === letter.toLocaleLowerCase('ru-RU');
-  const fallbackVowels = (isLowercase(consonants[0] || letters[0] || 'А') ? ['а', 'о', 'у', 'ы', 'э', 'е', 'ё', 'ю', 'я', 'и'] : ['А', 'О', 'У', 'Ы', 'Э', 'Е', 'Ё', 'Ю', 'Я', 'И']);
-  const usedVowels = vowels.length ? vowels : fallbackVowels;
-  const usedConsonants = consonants.length
-    ? consonants
-    : [isLowercase(vowels[0] || letters[0] || 'А') ? 'м' : 'М'];
+  const vowelGroups = groups.filter(hasOnlyVowels);
+  const consonantGroups = groups.filter(hasOnlyConsonants);
+  const completedSyllables = groups.filter(group => !hasOnlyVowels(group) && !hasOnlyConsonants(group));
+  const isLowercase = (group: string) => group === group.toLocaleLowerCase('ru-RU');
+  const lowerCase = isLowercase(groups[0] || 'А');
+  const fallbackVowels = lowerCase ? ['а', 'о', 'у', 'ы', 'э', 'е', 'ё', 'ю', 'я', 'и'] : ['А', 'О', 'У', 'Ы', 'Э', 'Е', 'Ё', 'Ю', 'Я', 'И'];
+  const fallbackConsonants = lowerCase ? ['т', 'в', 'м', 'н', 'л', 'р', 'с', 'к', 'п', 'б', 'д', 'г', 'з', 'ф', 'х', 'ц'] : ['Т', 'В', 'М', 'Н', 'Л', 'Р', 'С', 'К', 'П', 'Б', 'Д', 'Г', 'З', 'Ф', 'Х', 'Ц'];
+  const usedVowels = vowelGroups.length ? vowelGroups : fallbackVowels;
+  const usedConsonants = consonantGroups.length ? consonantGroups : fallbackConsonants;
   const desiredCount = Math.max(1, Math.min(16, Number.isFinite(count) ? Math.floor(count) : 16));
-  const vowelPool = [...new Map([...usedVowels, ...fallbackVowels].map(vowel => [vowel, vowel])).values()];
-  // A teacher may request up to sixteen cards even when they are practising
-  // just one consonant. Add the reverse open syllables as a second, still
-  // readable pool so the requested amount is produced without duplicating a
-  // card.
-  const direct = usedConsonants.flatMap(consonant => vowelPool.map(vowel => `${consonant}${vowel}`));
-  const reverse = vowelPool.flatMap(vowel => usedConsonants.map(consonant => `${vowel}${consonant}`));
-  return [...new Set([...direct, ...reverse])].slice(0, desiredCount);
+  const direct = usedConsonants.flatMap(consonant => usedVowels.map(vowel => `${consonant}${vowel}`));
+  return [...new Set([...completedSyllables, ...direct])].slice(0, desiredCount);
 }
 
 export function mascotForLetters(value: string) {
