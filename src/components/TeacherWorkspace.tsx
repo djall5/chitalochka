@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { BookOpen, Check, ChevronDown, ChevronUp, CopyPlus, Gamepad2, Library, Pencil, Play, Plus, Search, Trash2, Upload, UserRound, WandSparkles, X } from 'lucide-react';
-import { LessonData, LessonStatus, MemoryPair, ReadAndChooseTask, ReadingTextPage, Step13Config, Step14Config } from '../types';
+import { LessonData, LessonStatus, MemoryPair, ReadAndChooseTask, ReadingTextPage, Step13Config, Step14Config, Step15Config } from '../types';
 import { cloneLesson, GameLibraryItem, GameStepKey, lessonGameOrder } from '../gameLibrary';
 import { applyLetterToSelectedGames, isRussianLetter } from '../letterLesson';
 import { syllabifyRussian } from '../utils/syllabifyRussian';
@@ -175,6 +175,7 @@ export function LessonBuilder({ initialLesson, games, isEditing = false, onBack,
     if (!data.gameOrder?.length) { setError('Добавьте в урок хотя бы одну игру.'); return; }
     if (!coloringReady()) { setError('Настройте игру «Прочитай и раскрась»: загрузите рисунок, введите предложения и задайте цвет каждой области.'); return; }
     if (!readAndChooseReady()) { setError('Настройте игру «Прочитай и выбери»: добавьте предложение, от 2 до 6 картинок и отметьте один верный ответ в каждом задании.'); return; }
+    if (!movementWarmupReady()) { setError('Загрузите видео для игры «Активная разминка».'); return; }
     onSave(cloneLesson(data), play);
   };
   const coloringReady = () => selectedGames.filter(game => game.stepKey === 'step13').every(game => {
@@ -185,10 +186,15 @@ export function LessonBuilder({ initialLesson, games, isEditing = false, onBack,
     const config = (data.gameInstances?.[game.id]?.config.step14 || data.step14) as Step14Config;
     return config.tasks.length > 0 && config.tasks.every(task => task.plainText.trim() && (task.displayMode !== 'syllables' || task.syllabifiedText.trim()) && task.answers.length >= 2 && task.answers.length <= 6 && task.answers.every(answer => answer.imageDataUrl) && task.answers.filter(answer => answer.isCorrect).length === 1);
   });
+  const movementWarmupReady = () => selectedGames.filter(game => game.stepKey === 'step15').every(game => {
+    const config = (data.gameInstances?.[game.id]?.config.step15 || data.step15) as Step15Config;
+    return Boolean(config.videoDataUrl);
+  });
   const preview = () => {
     if (!data.gameOrder?.length) { setError('Добавьте в урок хотя бы одну игру, чтобы открыть предпросмотр.'); return; }
     if (!coloringReady()) { setError('Сначала настройте игру «Прочитай и раскрась».'); return; }
     if (!readAndChooseReady()) { setError('Сначала настройте игру «Прочитай и выбери».'); return; }
+    if (!movementWarmupReady()) { setError('Сначала загрузите видео для разминки.'); return; }
     onPreview(cloneLesson(data));
   };
 
@@ -335,10 +341,21 @@ function GameContentEditor({ game, lesson, onChange, onSave, onCancel }: GameCon
       setImageError('');
     } catch { setImageError('Не удалось прочитать этот файл изображения.'); }
   };
+  const handleWarmupVideoUpload = (file?: File) => {
+    if (!file) return;
+    if (!['video/mp4', 'video/webm'].includes(file.type)) { setImageError('Подойдут видео в формате MP4 или WebM.'); return; }
+    if (file.size > 8 * 1024 * 1024) { setImageError('Для сохранения в уроке видео должно быть не больше 8 МБ.'); return; }
+    const reader = new FileReader();
+    reader.onload = () => { updateConfig({ videoDataUrl: typeof reader.result === 'string' ? reader.result : '', videoName: file.name }); setImageError(''); };
+    reader.onerror = () => setImageError('Не удалось прочитать видео.');
+    reader.readAsDataURL(file);
+  };
   const preview = stepKey === 'step13'
     ? <div className="w-full max-w-sm space-y-2">{lesson.step13.imageDataUrl ? <img src={lesson.step13.imageDataUrl} alt="Раскраска" className="mx-auto max-h-56 rounded-xl bg-white object-contain" /> : <p className="rounded-xl bg-white p-4 text-xs text-slate-500">Загрузите раскраску</p>}<p className="rounded-xl bg-violet-50 p-3 text-sm font-bold">{lesson.step13.sentences.find(sentence => sentence.trim()) || 'Здесь появится текст под раскраской'}</p></div>
     : stepKey === 'step14'
       ? (() => { const task = lesson.step14.tasks[0]; const text = task?.displayMode === 'syllables' ? task.syllabifiedText || task.plainText : task?.plainText; return <div className="w-full max-w-sm space-y-2"><p className="rounded-xl border-2 border-slate-200 bg-white p-3 text-center text-sm font-black">{text || 'Здесь появится предложение'}</p><div className="grid grid-cols-2 gap-2">{(task?.answers || []).slice(0, 4).map((answer, index) => <div key={answer.id} className={`h-20 rounded-xl border p-1 ${answer.isCorrect ? 'border-emerald-400 bg-emerald-50' : 'border-pink-100 bg-white'}`}>{answer.imageDataUrl ? <img src={answer.imageDataUrl} alt={`Вариант ${index + 1}`} className="h-full w-full object-contain" /> : <span className="flex h-full items-center justify-center text-[10px] font-bold text-slate-400">Картинка {index + 1}</span>}</div>)}</div></div>; })()
+      : stepKey === 'step15'
+        ? <div className="w-full max-w-sm rounded-2xl border-2 border-pink-200 bg-slate-950 p-2">{lesson.step15.videoDataUrl ? <video src={lesson.step15.videoDataUrl} controls className="w-full rounded-xl" /> : <p className="rounded-xl bg-slate-900 p-8 text-center text-xs font-bold text-white/70">Загрузите видео для разминки</p>}</div>
     : stepKey === 'step3'
     ? <div className="grid max-w-xs gap-1.5" style={{ gridTemplateColumns: `repeat(${lesson.step3.gridCols}, minmax(0, 1fr))` }}>{lesson.step3.cells.flatMap((row, rowIndex) => row.map((letter, columnIndex) => <span key={`${rowIndex}-${columnIndex}`} className="flex aspect-square items-center justify-center rounded-lg border border-pink-200 bg-white text-xs font-black text-pink-700">{letter}</span>))}</div>
     : stepKey === 'step8'
@@ -402,10 +419,11 @@ function GameContentEditor({ game, lesson, onChange, onSave, onCancel }: GameCon
         })()}
         {stepKey === 'step13' && <ColoringEditor config={lesson.step13} onChange={updateConfig} />}
         {stepKey === 'step14' && <ReadAndChooseEditor config={lesson.step14} onChange={updateConfig} />}
-        {(stepKey === 'step13' || stepKey === 'step14') && imageError && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-xs font-bold text-rose-600">{imageError}</p>}
+        {stepKey === 'step15' && <div className="space-y-3 rounded-2xl bg-emerald-50/70 p-4"><div><h3 className="text-xs font-black text-emerald-800">Видео для активной разминки</h3><p className="mt-1 text-[10px] font-semibold text-slate-500">Ребёнок посмотрит ролик прямо в уроке и нажмёт «Я готов!», когда повторит движения. Для сохранения между устройствами используйте MP4 или WebM до 8 МБ.</p></div><label className={`${lightButton} w-fit cursor-pointer`}><Upload className="h-3.5 w-3.5" />{lesson.step15.videoDataUrl ? 'Заменить видео' : 'Загрузить видео'}<input type="file" accept="video/mp4,video/webm" className="hidden" onChange={event => { handleWarmupVideoUpload(event.target.files?.[0]); event.currentTarget.value = ''; }} /></label>{lesson.step15.videoDataUrl && <div className="space-y-2 rounded-xl bg-white p-3"><video src={lesson.step15.videoDataUrl} controls className="max-h-56 w-full rounded-lg bg-black" /><div className="flex items-center justify-between gap-2"><span className="truncate text-[10px] font-bold text-slate-500">{lesson.step15.videoName || 'Видео загружено'}</span><button className="rounded-lg bg-rose-50 px-2 py-1.5 text-[10px] font-black text-rose-600" onClick={() => updateConfig({ videoDataUrl: '', videoName: '' })}>Убрать видео</button></div></div>}</div>}
+        {(stepKey === 'step13' || stepKey === 'step14' || stepKey === 'step15') && imageError && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-xs font-bold text-rose-600">{imageError}</p>}
         <details className="rounded-2xl border border-pink-200 bg-gradient-to-br from-pink-50 to-violet-50 p-4"><summary className="cursor-pointer text-xs font-black text-pink-700">👀 Предпросмотр для ученика</summary><div className="mt-3 flex flex-col items-center gap-3"><h3 className="text-center text-base font-black text-pink-600">{lesson[stepKey].title}</h3>{preview}</div></details>
       </div>
-      <footer className="flex justify-end gap-2 border-t border-pink-100 bg-slate-50 p-4"><button className={lightButton} onClick={onCancel}>Отмена</button><button className={pinkButton} onClick={() => { if (stepKey === 'step13' && (!lesson.step13.imageDataUrl || !lesson.step13.regionMapDataUrl || !lesson.step13.sentences.some(sentence => sentence.trim()) || !lesson.step13.regions.some(region => region.enabled) || lesson.step13.regions.some(region => region.enabled && !region.targetColor))) { setImageError('Добавьте картинку и текст, затем задайте правильный цвет каждой включённой области.'); return; } if (stepKey === 'step14' && (!lesson.step14.tasks.length || lesson.step14.tasks.some(task => !task.plainText.trim() || (task.displayMode === 'syllables' && !task.syllabifiedText.trim()) || task.answers.length < 2 || task.answers.length > 6 || task.answers.some(answer => !answer.imageDataUrl) || task.answers.filter(answer => answer.isCorrect).length !== 1))) { setImageError('Заполните предложение, добавьте 2–6 картинок и отметьте один правильный ответ в каждом задании.'); return; } onSave(); }}><Check className="h-4 w-4" />Сохранить в урок</button></footer>
+      <footer className="flex justify-end gap-2 border-t border-pink-100 bg-slate-50 p-4"><button className={lightButton} onClick={onCancel}>Отмена</button><button className={pinkButton} onClick={() => { if (stepKey === 'step13' && (!lesson.step13.imageDataUrl || !lesson.step13.regionMapDataUrl || !lesson.step13.sentences.some(sentence => sentence.trim()) || !lesson.step13.regions.some(region => region.enabled) || lesson.step13.regions.some(region => region.enabled && !region.targetColor))) { setImageError('Добавьте картинку и текст, затем задайте правильный цвет каждой включённой области.'); return; } if (stepKey === 'step14' && (!lesson.step14.tasks.length || lesson.step14.tasks.some(task => !task.plainText.trim() || (task.displayMode === 'syllables' && !task.syllabifiedText.trim()) || task.answers.length < 2 || task.answers.length > 6 || task.answers.some(answer => !answer.imageDataUrl) || task.answers.filter(answer => answer.isCorrect).length !== 1))) { setImageError('Заполните предложение, добавьте 2–6 картинок и отметьте один правильный ответ в каждом задании.'); return; } if (stepKey === 'step15' && !lesson.step15.videoDataUrl) { setImageError('Загрузите видео для активной разминки.'); return; } onSave(); }}><Check className="h-4 w-4" />Сохранить в урок</button></footer>
     </section>
   </div>;
 }

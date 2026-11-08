@@ -182,6 +182,13 @@ export interface Step14Config {
   tasks: ReadAndChooseTask[];
 }
 
+export interface Step15Config {
+  title: string;
+  instruction: string;
+  videoDataUrl: string;
+  videoName: string;
+}
+
 export interface ReadingTextPage {
   id: string;
   imageDataUrl: string;
@@ -224,6 +231,7 @@ export interface LessonData {
   step12: Step12Config;
   step13: Step13Config;
   step14: Step14Config;
+  step15: Step15Config;
 }
 
 export type LessonStatus = 'in-progress' | 'completed' | 'repeat';
