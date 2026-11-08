@@ -35,6 +35,18 @@ export function Step8BuildHouse({ config, onPrev, onNext, isLastGame, onCorrectA
   const columns = Math.min(3, Math.max(1, words.length));
   const rows = Math.max(1, Math.ceil(words.length / columns));
   const roofRatio = `${Math.min(98, (340 / Math.max(1, Math.min(340, window.innerWidth - 56))) * 100)}%`;
+  // A partial bottom row has fewer cells than `columns`. Build the actual existing cells
+  // from bottom to top so no word is sent to a slot outside the visible grid.
+  const buildOrder = useMemo(() => {
+    const slots: number[] = [];
+    for (let row = rows - 1; row >= 0; row -= 1) {
+      for (let column = 0; column < columns; column += 1) {
+        const slot = row * columns + column;
+        if (slot < words.length) slots.push(slot);
+      }
+    }
+    return slots;
+  }, [columns, rows, words.length]);
 
   const stopListening = () => {
     const recognition = recognitionRef.current;
@@ -105,7 +117,6 @@ export function Step8BuildHouse({ config, onPrev, onNext, isLastGame, onCorrectA
   };
 
   const brickForSlot = (slot: number) => {
-    const buildOrder = Array.from({ length: words.length }, (_, index) => (rows - 1 - Math.floor(index / columns)) * columns + index % columns);
     const position = buildOrder.indexOf(slot);
     return position >= 0 ? words[placedIndexes[position]] : undefined;
   };
