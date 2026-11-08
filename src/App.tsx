@@ -26,7 +26,7 @@ import { playTransitionSound, isSoundMuted, toggleSound } from './utils/audio';
 import { ClassroomPanel } from './realtime/ClassroomPanel';
 import { RoomInteraction, RoomRole } from './realtime/lessonRoom';
 import { useLessonRoom } from './realtime/useLessonRoom';
-import { CloudLogin, CloudWorkspace, createStudentPortalLink, loadStudentPortal, loadStudentDesert, mutateStudentDesert, saveStudentPortalAttempt, useCloudWorkspace } from './cloud/cloudWorkspace';
+import { CloudLogin, CloudWorkspace, WorkspaceSnapshot, createStudentPortalLink, loadStudentPortal, loadStudentDesert, mutateStudentDesert, saveStudentPortalAttempt, useCloudWorkspace } from './cloud/cloudWorkspace';
 import { StudentPortalDashboard } from './components/StudentPortalDashboard';
 import { DesertGame } from './components/DesertGame';
 import { applyDesertAction, blankDesert, DesertAction, DesertState, desertBalance } from './desert/desertModel';
@@ -92,6 +92,18 @@ function readLessons(): LessonData[] {
   }
 }
 
+function readActiveLesson(): LessonData {
+  try {
+    const saved = localStorage.getItem(ACTIVE_LESSON_KEY);
+    if (saved) return JSON.parse(saved) as LessonData;
+  } catch { /* use the starter lesson */ }
+  return cloneLesson(defaultLessonY);
+}
+
+function readActiveStudentId(): string | null {
+  try { return localStorage.getItem(ACTIVE_STUDENT_KEY); } catch { return null; }
+}
+
 function readGames(): GameLibraryItem[] {
   try {
     const stored = localStorage.getItem(GAME_LIBRARY_KEY);
@@ -107,6 +119,38 @@ function readGames(): GameLibraryItem[] {
 function mergeGameLibrary(savedGames: GameLibraryItem[] | undefined | null): GameLibraryItem[] {
   const customGames = (savedGames || []).filter(game => game?.custom);
   return [...DEFAULT_GAME_LIBRARY, ...customGames];
+}
+
+function readLocalWorkspace(): WorkspaceSnapshot {
+  return {
+    students: readStudents(),
+    games: readGames(),
+    lesson: readActiveLesson(),
+    activeStudentId: readActiveStudentId(),
+  };
+}
+
+function lessonCount(students: StudentRecord[]) {
+  return students.reduce((total, student) => total + (student.lessons?.length || 0), 0);
+}
+
+/** Keeps a just-saved browser copy when an older cloud snapshot arrives after a refresh. */
+function mergeLocalWorkspace(cloudSnapshot: WorkspaceSnapshot, localSnapshot: WorkspaceSnapshot): WorkspaceSnapshot {
+  const cloudStudents = new Map(cloudSnapshot.students.map(student => [student.id, student]));
+  const students = localSnapshot.students.map(localStudent => {
+    const cloudStudent = cloudStudents.get(localStudent.id);
+    if (!cloudStudent) return localStudent;
+    cloudStudents.delete(localStudent.id);
+    const localLessonIds = new Set((localStudent.lessons || []).map(item => item.id));
+    const lessons = [...(localStudent.lessons || []), ...(cloudStudent.lessons || []).filter(item => !localLessonIds.has(item.id))];
+    return { ...cloudStudent, ...localStudent, lessons };
+  });
+  return {
+    students: [...students, ...cloudStudents.values()],
+    games: mergeGameLibrary([...(cloudSnapshot.games || []), ...(localSnapshot.games || [])]),
+    lesson: localSnapshot.lesson || cloudSnapshot.lesson,
+    activeStudentId: localSnapshot.activeStudentId || cloudSnapshot.activeStudentId,
+  };
 }
 
 function getElementPath(root: Element, target: Element): number[] | null {
@@ -134,18 +178,17 @@ function findElementAtPath(root: Element, path: number[]) {
 type Screen = 'library' | 'builder' | 'preview' | 'play' | 'edit' | 'student' | 'student-select' | 'student-portal' | 'desert';
 
 function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspace; studentPortalToken?: string }) {
-  const [games, setGames] = useState<GameLibraryItem[]>(() => mergeGameLibrary(cloud.snapshot?.games || readGames()));
-  const [students, setStudents] = useState<StudentRecord[]>(() => cloud.snapshot?.students || readStudents());
-  const [activeStudentId, setActiveStudentId] = useState<string | null>(() => cloud.snapshot?.activeStudentId ?? null);
+  const localWorkspaceAtLoadRef = useRef<WorkspaceSnapshot | null>(null);
+  if (!localWorkspaceAtLoadRef.current) localWorkspaceAtLoadRef.current = readLocalWorkspace();
+  const localWorkspaceAtLoad = localWorkspaceAtLoadRef.current;
+  const [games, setGames] = useState<GameLibraryItem[]>(() => mergeGameLibrary(cloud.snapshot?.games || localWorkspaceAtLoad.games));
+  const [students, setStudents] = useState<StudentRecord[]>(() => cloud.snapshot?.students || localWorkspaceAtLoad.students);
+  const [activeStudentId, setActiveStudentId] = useState<string | null>(() => cloud.snapshot?.activeStudentId ?? localWorkspaceAtLoad.activeStudentId);
   const [lesson, setLesson] = useState<LessonData>(() => {
     if (cloud.snapshot?.lesson) return cloud.snapshot.lesson;
     const portalLesson = studentPortalToken && cloud.snapshot?.students[0]?.lessons[0];
     if (portalLesson) return portalLesson;
-    try {
-      const saved = localStorage.getItem(ACTIVE_LESSON_KEY);
-      if (saved) return JSON.parse(saved) as LessonData;
-    } catch { /* use the starter lesson */ }
-    return cloneLesson(defaultLessonY);
+    return localWorkspaceAtLoad.lesson;
   });
   const [screen, setScreen] = useState<Screen>(studentPortalToken ? 'student-portal' : 'student-select');
   const [builderEditing, setBuilderEditing] = useState(false);
@@ -164,7 +207,8 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
   const [roomCharacter, setRoomCharacter] = useState<StudentRecord['character']>();
   const lessonSurfaceRef = useRef<HTMLDivElement>(null);
   const activePointerId = useRef<number | null>(null);
-  const cloudSnapshotRef = useRef(cloud.snapshot);
+  const cloudSnapshotRef = useRef<WorkspaceSnapshot | null>(null);
+  const localRecoveryAppliedRef = useRef(false);
   const localStudentEditVersionRef = useRef(0);
   const savedStudentEditVersionRef = useRef(0);
   const [cloudSaveState, setCloudSaveState] = useState<'saved' | 'saving' | 'error'>('saved');
@@ -257,14 +301,40 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
     try { localStorage.setItem(STUDENTS_KEY, JSON.stringify(next)); } catch { showToast('Не удалось сохранить данные учеников'); }
   };
 
+  const saveWorkspaceNow = async (snapshot: WorkspaceSnapshot) => {
+    if (studentPortalToken || !cloud.session) return true;
+    try {
+      await cloud.save(snapshot);
+      savedStudentEditVersionRef.current = Math.max(savedStudentEditVersionRef.current, localStudentEditVersionRef.current);
+      setCloudSaveState('saved');
+      return true;
+    } catch (error) {
+      console.error('Не удалось сразу сохранить урок в облако', error);
+      setCloudSaveState('error');
+      showToast('Урок сохранён на этом устройстве, но облако не ответило. Не закрывайте страницу и попробуйте ещё раз.');
+      return false;
+    }
+  };
+
   useEffect(() => {
     if (studentPortalToken || !cloud.snapshot || cloud.snapshot === cloudSnapshotRef.current) return;
     if (localStudentEditVersionRef.current !== savedStudentEditVersionRef.current) return;
+    const localSnapshot = localWorkspaceAtLoadRef.current;
+    const sharedStudent = localSnapshot?.students.some(student => cloud.snapshot?.students.some(cloudStudent => cloudStudent.id === student.id));
+    const needsRecovery = Boolean(!localRecoveryAppliedRef.current && localSnapshot && lessonCount(localSnapshot.students) > 0 && (cloud.snapshot.students.length === 0 || (sharedStudent && lessonCount(localSnapshot.students) > lessonCount(cloud.snapshot.students))));
+    const snapshot = needsRecovery && localSnapshot ? mergeLocalWorkspace(cloud.snapshot, localSnapshot) : cloud.snapshot;
     cloudSnapshotRef.current = cloud.snapshot;
-    setStudents(cloud.snapshot.students);
-    setGames(mergeGameLibrary(cloud.snapshot.games));
-    setLesson(cloud.snapshot.lesson);
-    setActiveStudentId(cloud.snapshot.activeStudentId);
+    if (needsRecovery) {
+      localRecoveryAppliedRef.current = true;
+      localStudentEditVersionRef.current += 1;
+      setCloudSaveState('saving');
+      try { localStorage.setItem(STUDENTS_KEY, JSON.stringify(snapshot.students)); } catch { /* recovery remains in memory */ }
+      showToast('Восстановили сохранённые на этом устройстве уроки. Синхронизируем их с облаком…');
+    }
+    setStudents(snapshot.students);
+    setGames(mergeGameLibrary(snapshot.games));
+    setLesson(snapshot.lesson);
+    setActiveStudentId(snapshot.activeStudentId);
   }, [studentPortalToken, cloud.snapshot]);
 
   useEffect(() => {
@@ -386,10 +456,13 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
   }, [collaboration.roomId, collaboration.status, screen, currentStep, score, showCompletion]);
 
   const updateActiveStudentLessons = (nextLessons: LessonData[]) => {
-    if (!activeStudent) return;
-    persistStudents(students.map(student => student.id === activeStudent.id
+    try { localStorage.setItem(LESSON_LIBRARY_KEY, JSON.stringify(nextLessons)); } catch { /* student copy remains available */ }
+    if (!activeStudent) return null;
+    const nextStudents = students.map(student => student.id === activeStudent.id
       ? { ...student, lessons: nextLessons.map(cloneLesson) }
-      : student));
+      : student);
+    persistStudents(nextStudents);
+    return nextStudents;
   };
 
   const getLessonStatus = (item: LessonData): LessonStatus => {
@@ -412,23 +485,25 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
     }));
   };
 
-  const handleSaveLesson = (updated: LessonData) => {
+  const handleSaveLesson = async (updated: LessonData) => {
     const savedLesson = { ...updated, isDraft: updated.isDraft && !updated.title.trim() };
     setLesson(savedLesson);
     try { localStorage.setItem(ACTIVE_LESSON_KEY, JSON.stringify(savedLesson)); } catch { /* library copy is still saved below */ }
     const exists = lessons.some(item => item.id === savedLesson.id);
-    updateActiveStudentLessons(exists ? lessons.map(item => item.id === savedLesson.id ? cloneLesson(savedLesson) : item) : [cloneLesson(savedLesson), ...lessons]);
-    showToast('Урок сохранён в библиотеку');
+    const nextStudents = updateActiveStudentLessons(exists ? lessons.map(item => item.id === savedLesson.id ? cloneLesson(savedLesson) : item) : [cloneLesson(savedLesson), ...lessons]);
+    const synced = await saveWorkspaceNow({ students: nextStudents || students, games, lesson: savedLesson, activeStudentId });
+    showToast(synced ? 'Урок сохранён в библиотеку и облако' : 'Урок сохранён в библиотеку');
   };
 
-  const handleSaveBuiltLesson = (updated: LessonData, playAfterSave: boolean) => {
+  const handleSaveBuiltLesson = async (updated: LessonData, playAfterSave: boolean) => {
     const savedLesson = { ...updated, isDraft: updated.isDraft && !updated.title.trim() };
     setLesson(savedLesson);
     setCurrentStep(0);
     try { localStorage.setItem(ACTIVE_LESSON_KEY, JSON.stringify(savedLesson)); } catch { /* continue with the in-memory lesson */ }
     const exists = lessons.some(item => item.id === savedLesson.id);
-    updateActiveStudentLessons(exists ? lessons.map(item => item.id === savedLesson.id ? cloneLesson(savedLesson) : item) : [cloneLesson(savedLesson), ...lessons]);
-    showToast('Урок добавлен в библиотеку');
+    const nextStudents = updateActiveStudentLessons(exists ? lessons.map(item => item.id === savedLesson.id ? cloneLesson(savedLesson) : item) : [cloneLesson(savedLesson), ...lessons]);
+    const synced = await saveWorkspaceNow({ students: nextStudents || students, games, lesson: savedLesson, activeStudentId });
+    showToast(synced ? 'Урок добавлен в библиотеку и облако' : 'Урок добавлен в библиотеку');
     if (playAfterSave) resetSessionScore();
     setScreen(playAfterSave ? 'play' : 'library');
   };
