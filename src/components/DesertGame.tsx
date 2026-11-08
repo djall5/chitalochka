@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Droplets, Pencil, ShoppingBag, Sprout, X } from 'lucide-react';
+import { ArrowLeft, Droplets, Pencil, RefreshCw, ShoppingBag, Sprout, X } from 'lucide-react';
 import { applyDesertAction, canPlaceDesertItem, DESERT_ANIMALS, DESERT_CATALOG, DESERT_CELL_COUNT, DESERT_COLS, DESERT_FLAT_ITEMS, DESERT_GROUND_TOP, DESERT_PATHS, DESERT_RETIRED_PATHS, DESERT_ROWS, DESERT_SHOP_CATALOG, DesertAction, DesertItemId, DesertObject, DesertState, desertBalance, desertCellAt } from '../desert/desertModel';
 
 type CharacterDirection = 'front' | 'back' | 'side' | 'threeQuarter';
@@ -11,6 +11,7 @@ type Props = {
   desert: DesertState;
   character?: CharacterImages;
   onAction: (action: DesertAction) => Promise<DesertState>;
+  onRefresh?: () => Promise<DesertState>;
   onClose: () => void;
 };
 
@@ -91,7 +92,7 @@ function makeBrushPaths(width: number, height: number) {
   });
 }
 
-export function DesertGame({ studentName, earned, desert, character, onAction, onClose }: Props) {
+export function DesertGame({ studentName, earned, desert, character, onAction, onRefresh, onClose }: Props) {
   const [world, setWorld] = useState(desert);
   const [selected, setSelected] = useState<DesertItemId>('water');
   const [shopOpen, setShopOpen] = useState(false);
@@ -107,6 +108,7 @@ export function DesertGame({ studentName, earned, desert, character, onAction, o
   const [objectLayer, setObjectLayer] = useState(0);
   const [waterQuantity, setWaterQuantity] = useState(1);
   const [busy, setBusy] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [message, setMessage] = useState('Купи воду, затем проведи пальцем или мышью по песку.');
   const [hero, setHero] = useState({ x: 0.5, y: 0.73, direction: 'front' as CharacterDirection, facesLeft: false });
   const [wateringPose, setWateringPose] = useState(false);
@@ -176,9 +178,34 @@ export function DesertGame({ studentName, earned, desert, character, onAction, o
       else if (action.type === 'water') setMessage('Земля оживает! Продолжай поливать.');
       else setMessage(action.type === 'store' ? 'Предмет убран в рюкзак. Его можно снова разместить через магазин.' : action.type === 'edit' ? 'Изменения сохранены!' : 'Предмет появился в твоём зелёном мире!');
     } catch (error) {
+      const failureMessage = error instanceof Error ? error.message : 'Не удалось сохранить действие.';
+      if (onRefresh) {
+        try {
+          const latest = await onRefresh();
+          setWorld(latest);
+          setMessage(`${failureMessage} Показана последняя сохранённая версия мира.`);
+          return;
+        } catch {
+          // Keep the last known state below when the recovery request also fails.
+        }
+      }
       setWorld(base);
-      setMessage(error instanceof Error ? error.message : 'Не удалось сохранить действие. Попробуй ещё раз.');
+      setMessage(`${failureMessage} Попробуй ещё раз.`);
     } finally { setBusy(false); }
+  }
+
+  async function refreshWorld() {
+    if (!onRefresh || busy || refreshing) return;
+    setRefreshing(true);
+    try {
+      const latest = await onRefresh();
+      setWorld(latest);
+      setMessage('Мир обновлён. Здесь показана последняя сохранённая версия.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Не удалось обновить мир. Проверь подключение и попробуй ещё раз.');
+    } finally {
+      setRefreshing(false);
+    }
   }
 
   function onPointerDown(event: React.PointerEvent<HTMLDivElement>) {
@@ -298,7 +325,7 @@ export function DesertGame({ studentName, earned, desert, character, onAction, o
     <header className="z-10 flex flex-wrap items-center justify-between gap-2 bg-[#153b3b]/95 px-3 py-2 shadow-lg sm:px-5">
       <button onClick={onClose} className="flex items-center gap-1 rounded-xl bg-white/15 px-3 py-2 text-sm font-black hover:bg-white/25"><ArrowLeft size={18} /> Назад</button>
       <div className="min-w-0 text-center"><h1 className="truncate text-base font-black sm:text-xl">🌍 Мир {studentName}</h1><p className="text-[11px] font-semibold text-emerald-200">Зелёных участков: {greenCount} из {DESERT_CELL_COUNT}</p></div>
-      <div className="flex items-center gap-2"><span className="rounded-xl bg-amber-400 px-3 py-2 text-sm font-black text-amber-950">⭐ {balance}</span><span className="rounded-xl bg-sky-500 px-3 py-2 text-sm font-black">💧 {world.water}</span></div>
+      <div className="flex items-center gap-2"><span className="rounded-xl bg-amber-400 px-3 py-2 text-sm font-black text-amber-950">⭐ {balance}</span><span className="rounded-xl bg-sky-500 px-3 py-2 text-sm font-black">💧 {world.water}</span>{onRefresh && <button type="button" onClick={() => void refreshWorld()} disabled={busy || refreshing} className="rounded-xl bg-white/15 p-2 hover:bg-white/25 disabled:cursor-wait disabled:opacity-60" aria-label="Обновить мир" title="Обновить мир">{refreshing ? <span className="text-xs font-black">…</span> : <RefreshCw size={18} />}</button>}</div>
     </header>
 
     <div ref={sceneRef} className="relative z-0 min-h-0 flex-1 select-none overflow-hidden touch-none" onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerLeave={() => setHoverPoint(null)} onPointerUp={finishStroke} onPointerCancel={finishStroke}>
@@ -317,7 +344,7 @@ export function DesertGame({ studentName, earned, desert, character, onAction, o
       })}
       {previewPoint && <img src={itemSpriteUrl(itemSprites[selected]!.file)} alt={`Предпросмотр: ${selectedItem.name}`} draggable={false} className={`pointer-events-none absolute object-contain drop-shadow-xl ${previewValid ? 'opacity-75' : 'opacity-35 grayscale'}`} style={{ ...itemSpriteStyle(itemSprites[selected]!, previewPoint.x, previewPoint.y, rotatable ? objectRotation : 0, previewFlipped, objectScale, selected === 'fence', flatItems.has(selected)), zIndex: objectDepth(previewPoint.y, editingObjectId ? objectLayer : 0) + 1 }} />}
       <img src={imageForDirection} alt={showWateringImage ? 'Герой поливает пустыню' : 'Герой озеленяет пустыню'} draggable={false} className="pointer-events-none absolute h-[min(26vh,180px)] w-auto object-contain drop-shadow-xl transition-[left,top] duration-700 ease-out" style={{ left: `${hero.x * 100}%`, top: `${hero.y * 100}%`, zIndex: objectDepth(hero.y), transform: `translate(-50%, -100%) ${hero.facesLeft && (showWateringImage || direction === 'side') ? 'scaleX(-1)' : ''}` }} />
-      <div className="pointer-events-none absolute bottom-2 left-1/2 z-[40000] max-w-[90%] -translate-x-1/2 rounded-2xl bg-slate-950/70 px-4 py-2 text-center text-xs font-bold text-white sm:text-sm" role="status">{message}</div>
+      <div className="pointer-events-none absolute bottom-2 left-1/2 z-[40000] max-w-[90%] -translate-x-1/2 rounded-2xl bg-slate-950/70 px-4 py-2 text-center text-xs font-bold text-white sm:text-sm" role="status">{busy ? 'Сохраняем мир…' : refreshing ? 'Обновляем мир…' : message}</div>
     </div>
 
 

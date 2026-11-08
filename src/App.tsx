@@ -198,6 +198,10 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
   const [desertSnapshot, setDesertSnapshot] = useState<{ studentId: string; desert: DesertState; earned: number } | null>(null);
   const [desertReturnScreen, setDesertReturnScreen] = useState<Screen>('student');
   const [desertLoading, setDesertLoading] = useState(false);
+  // A read that began before a mutation must never overwrite the newer world.
+  // This matters when the same student opens the desert on two devices.
+  const desertRevisionRef = useRef(0);
+  const desertMutationsInFlightRef = useRef(0);
   const answeredKeys = useRef(new Set<string>());
   const completedRun = useRef(false);
   const [editorStartTab, setEditorStartTab] = useState(0);
@@ -295,6 +299,35 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
     setToastMessage(message);
     window.setTimeout(() => setToastMessage(null), 2500);
   };
+
+  useEffect(() => {
+    if (screen !== 'desert' || !activeStudent || (collaboration.role === 'student' && !studentPortalToken)) return;
+    let cancelled = false;
+    const studentId = activeStudent.id;
+    const syncDesert = async () => {
+      if (desertMutationsInFlightRef.current) return;
+      const revision = desertRevisionRef.current;
+      try {
+        const result = await loadStudentDesert(studentId, studentPortalToken);
+        if (!cancelled && !desertMutationsInFlightRef.current && revision === desertRevisionRef.current) {
+          setDesertSnapshot({ studentId, ...result });
+        }
+      } catch {
+        // A later action or manual refresh will show an actionable error. Do not
+        // interrupt the child with a toast just because a background check failed.
+      }
+    };
+    const onVisible = () => { if (document.visibilityState === 'visible') void syncDesert(); };
+    window.addEventListener('focus', onVisible);
+    document.addEventListener('visibilitychange', onVisible);
+    const interval = window.setInterval(() => void syncDesert(), 15000);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', onVisible);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.clearInterval(interval);
+    };
+  }, [screen, activeStudent?.id, studentPortalToken, collaboration.role]);
 
   /** The lesson used to be written three times in browser storage. Media-heavy lessons can exceed its quota. */
   const saveStudentsLocally = (next: StudentRecord[]) => {
@@ -742,14 +775,31 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
     }
     if (!activeStudent || desertLoading) { if (!activeStudent) showToast('Сначала выберите карточку ученика.'); return; }
     setDesertLoading(true);
+    const revision = ++desertRevisionRef.current;
     try {
       const result = await loadStudentDesert(activeStudent.id, studentPortalToken);
+      if (revision !== desertRevisionRef.current) return;
       setDesertSnapshot({ studentId: activeStudent.id, ...result });
       setDesertReturnScreen(screen === 'student' ? 'student' : studentPortalToken ? 'student-portal' : 'play');
       setShowCompletion(false);
       setScreen('desert');
     } catch (error) { showToast(error instanceof Error ? error.message : 'Не удалось открыть пустыню.'); }
     finally { setDesertLoading(false); }
+  };
+
+  const refreshDesertWorld = async (): Promise<DesertState> => {
+    const studentId = desertSnapshot?.studentId || activeStudent?.id;
+    if (!studentId) throw new Error('Карточка ученика не найдена.');
+    if (collaboration.role === 'student' && !studentPortalToken) {
+      throw new Error('Мир обновляет учитель в комнате.');
+    }
+    const revision = desertRevisionRef.current;
+    const result = await loadStudentDesert(studentId, studentPortalToken);
+    if (desertMutationsInFlightRef.current || revision !== desertRevisionRef.current) {
+      return desertSnapshot?.desert || result.desert;
+    }
+    setDesertSnapshot({ studentId, ...result });
+    return result.desert;
   };
 
   const performDesertAction = async (action: DesertAction): Promise<DesertState> => {
@@ -761,9 +811,15 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
     }
     const studentId = desertSnapshot?.studentId || activeStudent?.id;
     if (!studentId) throw new Error('Карточка ученика не найдена.');
-    const result = await mutateStudentDesert(studentId, studentPortalToken, action);
-    setDesertSnapshot({ studentId, ...result });
-    return result.desert;
+    ++desertRevisionRef.current;
+    desertMutationsInFlightRef.current += 1;
+    try {
+      const result = await mutateStudentDesert(studentId, studentPortalToken, action);
+      setDesertSnapshot({ studentId, ...result });
+      return result.desert;
+    } finally {
+      desertMutationsInFlightRef.current = Math.max(0, desertMutationsInFlightRef.current - 1);
+    }
   };
 
   const closeDesert = () => {
@@ -857,7 +913,7 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
       </main>
 
       {showCompletion && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4"><div className="w-full max-w-sm rounded-3xl border-4 border-pink-200 bg-white p-7 text-center shadow-2xl"><div className="text-5xl">🏆</div><h2 className="mt-3 text-2xl font-black text-pink-600">Урок завершён!</h2><p className="mt-2 text-sm font-semibold text-slate-600">{displayStudentName} заработал(а) <strong className="text-amber-600">{score} баллов</strong>.</p><button disabled={desertLoading} onClick={() => void openDesert()} className="mt-5 w-full rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 px-4 py-3 text-sm font-black text-white disabled:opacity-50">{desertLoading ? 'Открываем…' : '🌍 Перейти в пустыню'}</button><button onClick={() => { setShowCompletion(false); void collaboration.leave(); setScreen(studentPortalToken ? 'student-portal' : 'library'); }} className="mt-2 w-full rounded-xl bg-slate-100 px-4 py-2.5 text-xs font-black text-slate-600">Завершить и выйти</button></div></div>}
-      {screen === 'desert' && desertSnapshot && <DesertGame studentName={displayStudentName} earned={desertSnapshot.earned} desert={desertSnapshot.desert} character={activeStudent?.character || roomCharacter} onAction={performDesertAction} onClose={closeDesert} />}
+      {screen === 'desert' && desertSnapshot && <DesertGame studentName={displayStudentName} earned={desertSnapshot.earned} desert={desertSnapshot.desert} character={activeStudent?.character || roomCharacter} onAction={performDesertAction} onRefresh={collaboration.role === 'student' && !studentPortalToken ? undefined : refreshDesertWorld} onClose={closeDesert} />}
 
       {(screen === 'play' || cloud.session) && <footer className={`mt-4 flex w-full ${wide ? 'max-w-6xl' : 'max-w-2xl'} flex-wrap items-center justify-between gap-3 rounded-2xl border border-pink-100 bg-white/75 px-4 py-3 text-xs font-semibold text-slate-500 shadow-sm`}>
         {screen === 'play' && <div className="flex flex-wrap items-center gap-2"><span>🌟 Интерактивный урок обучения грамоте и чтению</span>{!studentPortalToken && <><span>•</span><button onClick={() => { const reset = cloneLesson(defaultLessonY); handleSaveLesson(reset); setCurrentStep(0); }} className="text-pink-600 hover:underline">Сбросить к образцу</button></>}</div>}
