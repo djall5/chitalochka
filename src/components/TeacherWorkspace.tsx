@@ -236,10 +236,9 @@ function ReadAndChooseEditor({ config, onChange }: { config: Step14Config; onCha
   const updateTask = (id: string, patch: Partial<ReadAndChooseTask>) => onChange({ tasks: config.tasks.map(task => task.id === id ? { ...task, ...patch } : task) });
   const removeTask = (id: string) => onChange({ tasks: config.tasks.filter(task => task.id !== id) });
   const updateAnswers = (task: ReadAndChooseTask, answers: ReadAndChooseTask['answers']) => updateTask(task.id, { answers });
-  const upload = async (task: ReadAndChooseTask, answerId: string, file?: File) => {
-    if (!file) return;
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) { setError('Подойдут файлы JPG, PNG или WebP.'); return; }
-    if (file.size > 12 * 1024 * 1024) { setError('Изображение должно быть меньше 12 МБ.'); return; }
+  const imageDataUrl = async (file: File) => {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) throw new Error('Подойдут файлы JPG, PNG или WebP.');
+    if (file.size > 12 * 1024 * 1024) throw new Error('Каждое изображение должно быть меньше 12 МБ.');
     try {
       const bitmap = await createImageBitmap(file);
       const scale = Math.min(1, 800 / bitmap.width, 600 / bitmap.height);
@@ -248,9 +247,25 @@ function ReadAndChooseEditor({ config, onChange }: { config: Step14Config; onCha
       canvas.height = Math.max(1, Math.round(bitmap.height * scale));
       canvas.getContext('2d')?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
       bitmap.close();
-      updateAnswers(task, task.answers.map(answer => answer.id === answerId ? { ...answer, imageDataUrl: canvas.toDataURL('image/jpeg', 0.84) } : answer));
+      return canvas.toDataURL('image/jpeg', 0.84);
+    } catch { throw new Error('Не удалось прочитать один из файлов изображения.'); }
+  };
+  const upload = async (task: ReadAndChooseTask, answerId: string, file?: File) => {
+    if (!file) return;
+    try {
+      const dataUrl = await imageDataUrl(file);
+      updateAnswers(task, task.answers.map(answer => answer.id === answerId ? { ...answer, imageDataUrl: dataUrl } : answer));
       setError('');
-    } catch { setError('Не удалось прочитать этот файл изображения.'); }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Не удалось прочитать этот файл изображения.'); }
+  };
+  const uploadAll = async (task: ReadAndChooseTask, files?: FileList) => {
+    const selected = Array.from(files || []);
+    if (selected.length < 2) { setError('Выберите сразу от 2 до 6 картинок.'); return; }
+    try {
+      const dataUrls = await Promise.all(selected.slice(0, 6).map(imageDataUrl));
+      updateAnswers(task, dataUrls.map((imageDataUrl, index) => ({ ...createReadAndChooseAnswer(index === 0), imageDataUrl })));
+      setError(selected.length > 6 ? 'Загружены первые 6 картинок.' : '');
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Не удалось прочитать картинки.'); }
   };
 
   return <div className="space-y-3 rounded-2xl bg-pink-50/60 p-4">
@@ -260,6 +275,7 @@ function ReadAndChooseEditor({ config, onChange }: { config: Step14Config; onCha
       <label className="block text-[10px] font-bold text-slate-600">Предложение<textarea className={inputClass} rows={2} value={task.plainText} onChange={event => updateTask(task.id, { plainText: event.target.value })} placeholder="Например, Маша моет окно." /></label>
       <div className="grid gap-2 sm:grid-cols-[1fr_auto]"><label className="block text-[10px] font-bold text-slate-600">Вариант по слогам · можно править вручную<textarea className={inputClass} rows={2} value={task.syllabifiedText} onChange={event => updateTask(task.id, { syllabifiedText: event.target.value })} placeholder="Ма-ша мо-ет ок-но." /></label><div className="flex items-end"><button className={lightButton} onClick={() => updateTask(task.id, { syllabifiedText: syllabifyRussian(task.plainText) })}>✨ Сделать по слогам</button></div></div>
       <label className="block text-[10px] font-bold text-slate-600">Показывать ребёнку<select className={inputClass} value={task.displayMode} onChange={event => updateTask(task.id, { displayMode: event.target.value as ReadAndChooseTask['displayMode'] })}><option value="whole">Цельное предложение</option><option value="syllables">По слогам</option></select></label>
+      <div className="flex flex-wrap items-center gap-2 rounded-xl bg-pink-50 p-2"><label className={`${lightButton} cursor-pointer`}><Upload className="h-3.5 w-3.5" />Загрузить все картинки<input type="file" multiple accept="image/jpeg,image/png,image/webp" className="hidden" onChange={event => { void uploadAll(task, event.target.files || undefined); event.currentTarget.value = ''; }} /></label><span className="text-[10px] font-semibold text-slate-500">Выберите 2–6 файлов — они сами заполнят карточки.</span></div>
       <div className="grid gap-2 sm:grid-cols-2">{task.answers.map((answer, answerIndex) => <div key={answer.id} className={`rounded-xl border p-2 ${answer.isCorrect ? 'border-emerald-300 bg-emerald-50/50' : 'border-slate-200 bg-slate-50'}`}><div className="flex items-center justify-between gap-2"><label className="inline-flex items-center gap-1 text-[10px] font-black text-slate-600"><input type="radio" checked={answer.isCorrect} onChange={() => updateAnswers(task, task.answers.map(item => ({ ...item, isCorrect: item.id === answer.id })))} />Правильная</label><button className="rounded-lg bg-rose-50 p-1.5 text-rose-500 disabled:opacity-30" disabled={task.answers.length <= 2} title="Удалить вариант" onClick={() => updateAnswers(task, task.answers.filter(item => item.id !== answer.id))}><X className="h-3.5 w-3.5" /></button></div><label className={`${lightButton} mt-2 w-full cursor-pointer justify-center`}><Upload className="h-3.5 w-3.5" />{answer.imageDataUrl ? 'Заменить картинку' : `Загрузить вариант ${answerIndex + 1}`}<input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={event => { void upload(task, answer.id, event.target.files?.[0]); event.currentTarget.value = ''; }} /></label>{answer.imageDataUrl ? <img src={answer.imageDataUrl} alt={`Вариант ${answerIndex + 1}`} className="mt-2 h-28 w-full rounded-lg bg-white object-contain" /> : <div className="mt-2 flex h-28 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-white text-[10px] font-bold text-slate-400">Картинка не выбрана</div>}</div>)}</div>
       {task.answers.length < 6 && <button className={lightButton} onClick={() => updateAnswers(task, [...task.answers, createReadAndChooseAnswer(false)])}><Plus className="h-3.5 w-3.5" />Добавить вариант картинки</button>}
     </div>)}
