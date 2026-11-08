@@ -293,12 +293,34 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
     window.setTimeout(() => setToastMessage(null), 2500);
   };
 
+  /** The lesson used to be written three times in browser storage. Media-heavy lessons can exceed its quota. */
+  const saveStudentsLocally = (next: StudentRecord[]) => {
+    try {
+      localStorage.setItem(STUDENTS_KEY, JSON.stringify(next));
+      // The student library is now the canonical local copy; remove obsolete duplicate caches.
+      localStorage.removeItem(LESSON_LIBRARY_KEY);
+      localStorage.removeItem(ACTIVE_LESSON_KEY);
+      return true;
+    } catch {
+      try {
+        // Free only the legacy duplicate copies, then retry the canonical copy once.
+        localStorage.removeItem(LESSON_LIBRARY_KEY);
+        localStorage.removeItem(ACTIVE_LESSON_KEY);
+        localStorage.setItem(STUDENTS_KEY, JSON.stringify(next));
+        return true;
+      } catch (error) {
+        console.warn('Browser storage is full; the cloud copy remains available.', error);
+        return false;
+      }
+    }
+  };
+
   const persistStudents = (next: StudentRecord[]) => {
     localStudentEditVersionRef.current += 1;
     setCloudSaveState('saving');
     setStudents(next);
     if (studentPortalToken) return;
-    try { localStorage.setItem(STUDENTS_KEY, JSON.stringify(next)); } catch { showToast('Не удалось сохранить данные учеников'); }
+    saveStudentsLocally(next);
   };
 
   const saveWorkspaceNow = async (snapshot: WorkspaceSnapshot) => {
@@ -328,7 +350,7 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
       localRecoveryAppliedRef.current = true;
       localStudentEditVersionRef.current += 1;
       setCloudSaveState('saving');
-      try { localStorage.setItem(STUDENTS_KEY, JSON.stringify(snapshot.students)); } catch { /* recovery remains in memory */ }
+      saveStudentsLocally(snapshot.students);
       showToast('Восстановили сохранённые на этом устройстве уроки. Синхронизируем их с облаком…');
     }
     setStudents(snapshot.students);
@@ -456,7 +478,6 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
   }, [collaboration.roomId, collaboration.status, screen, currentStep, score, showCompletion]);
 
   const updateActiveStudentLessons = (nextLessons: LessonData[]) => {
-    try { localStorage.setItem(LESSON_LIBRARY_KEY, JSON.stringify(nextLessons)); } catch { /* student copy remains available */ }
     if (!activeStudent) return null;
     const nextStudents = students.map(student => student.id === activeStudent.id
       ? { ...student, lessons: nextLessons.map(cloneLesson) }
@@ -488,7 +509,6 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
   const handleSaveLesson = async (updated: LessonData) => {
     const savedLesson = { ...updated, isDraft: updated.isDraft && !updated.title.trim() };
     setLesson(savedLesson);
-    try { localStorage.setItem(ACTIVE_LESSON_KEY, JSON.stringify(savedLesson)); } catch { /* library copy is still saved below */ }
     const exists = lessons.some(item => item.id === savedLesson.id);
     const nextStudents = updateActiveStudentLessons(exists ? lessons.map(item => item.id === savedLesson.id ? cloneLesson(savedLesson) : item) : [cloneLesson(savedLesson), ...lessons]);
     const synced = await saveWorkspaceNow({ students: nextStudents || students, games, lesson: savedLesson, activeStudentId });
@@ -499,7 +519,6 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
     const savedLesson = { ...updated, isDraft: updated.isDraft && !updated.title.trim() };
     setLesson(savedLesson);
     setCurrentStep(0);
-    try { localStorage.setItem(ACTIVE_LESSON_KEY, JSON.stringify(savedLesson)); } catch { /* continue with the in-memory lesson */ }
     const exists = lessons.some(item => item.id === savedLesson.id);
     const nextStudents = updateActiveStudentLessons(exists ? lessons.map(item => item.id === savedLesson.id ? cloneLesson(savedLesson) : item) : [cloneLesson(savedLesson), ...lessons]);
     const synced = await saveWorkspaceNow({ students: nextStudents || students, games, lesson: savedLesson, activeStudentId });
