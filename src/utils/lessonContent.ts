@@ -118,7 +118,13 @@ export function generateSyllablesPreservingCase(value: string, count = 16) {
     : [isLowercase(vowels[0] || letters[0] || 'А') ? 'м' : 'М'];
   const desiredCount = Math.max(2, Math.min(16, Number.isFinite(count) ? Math.floor(count) : 16));
   const vowelPool = [...new Map([...usedVowels, ...fallbackVowels].map(vowel => [vowel, vowel])).values()];
-  return [...new Set(usedConsonants.flatMap(consonant => vowelPool.map(vowel => `${consonant}${vowel}`)))].slice(0, desiredCount);
+  // A teacher may request up to sixteen cards even when they are practising
+  // just one consonant. Add the reverse open syllables as a second, still
+  // readable pool so the requested amount is produced without duplicating a
+  // card.
+  const direct = usedConsonants.flatMap(consonant => vowelPool.map(vowel => `${consonant}${vowel}`));
+  const reverse = vowelPool.flatMap(vowel => usedConsonants.map(consonant => `${vowel}${consonant}`));
+  return [...new Set([...direct, ...reverse])].slice(0, desiredCount);
 }
 
 export function mascotForLetters(value: string) {
