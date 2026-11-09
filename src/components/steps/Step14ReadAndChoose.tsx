@@ -61,8 +61,9 @@ export function Step14ReadAndChoose({ config, onPrev, onNext, isLastGame, onCorr
       {answers.map((answer, index) => {
         const selected = selectedId === answer.id;
         const classes = correct && answer.isCorrect ? 'border-emerald-500 bg-emerald-50 ring-4 ring-emerald-200' : selected ? 'border-rose-400 bg-rose-50 ring-2 ring-rose-200' : 'border-slate-200 bg-white hover:border-pink-300 hover:bg-pink-50';
-        return <button key={answer.id} onClick={() => choose(answer.id)} disabled={correct} className={`group relative min-h-32 overflow-hidden rounded-2xl border-2 p-2 shadow-sm transition duration-200 ease-out ${correct ? '' : 'hover:z-10 hover:scale-[1.07] hover:shadow-lg focus-visible:z-10 focus-visible:scale-[1.07] focus-visible:outline focus-visible:outline-4 focus-visible:outline-pink-400'} ${classes}`} aria-label={`Вариант ${index + 1}`}>
+        return <button key={answer.id} onClick={() => choose(answer.id)} disabled={correct} className={`group relative min-h-32 rounded-2xl border-2 p-2 shadow-sm transition duration-200 ease-out ${correct ? '' : 'hover:z-10 hover:-translate-y-1 hover:shadow-lg focus-visible:z-10 focus-visible:-translate-y-1 focus-visible:outline focus-visible:outline-4 focus-visible:outline-pink-400'} ${classes}`} aria-label={`Вариант ${index + 1}`}>
           <img src={answer.imageDataUrl} alt={`Вариант ответа ${index + 1}`} className="h-28 w-full rounded-xl object-contain" />
+          {!correct && <span className="pointer-events-none absolute left-1/2 top-0 z-30 hidden w-64 -translate-x-1/2 -translate-y-[calc(100%+0.75rem)] rounded-2xl border-4 border-pink-300 bg-white p-2 shadow-2xl sm:w-80 group-hover:block group-focus-visible:block" aria-hidden="true"><img src={answer.imageDataUrl} alt="" className="h-56 w-full rounded-xl object-contain sm:h-64" /><span className="mt-1 block text-[10px] font-black text-pink-600">Увеличенный просмотр</span></span>}
           {correct && answer.isCorrect && <span className="absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center rounded-full bg-emerald-500 text-white"><Check className="h-4 w-4" /></span>}
         </button>;
       })}
