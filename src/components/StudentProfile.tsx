@@ -180,6 +180,15 @@ function learningProgressForLesson(lesson: LessonData, games: GameLibraryItem[])
   return collectLessonLearningProgress(lesson, lessonGames);
 }
 
+/** The same progress view is used in a pupil profile and while planning a new lesson. */
+export function planningProgressForStudent(learningProgress: StudentLearningProgress | undefined, attempts: LessonAttempt[], lessons: LessonData[], games: GameLibraryItem[]) {
+  const storedProgress = normalizeLearningProgress(learningProgress);
+  const lettersOnlyProgress = { letters: storedProgress.letters, syllables: [], words: [] };
+  const completedLessonIds = new Set(attempts.map(attempt => attempt.lessonId));
+  const historicalProgress = lessons.reduce((result, lesson) => completedLessonIds.has(lesson.id) ? mergeLearningProgress(result, learningProgressForLesson(lesson, games)) : result, blankProgress());
+  return mergeLearningProgress(lettersOnlyProgress, historicalProgress);
+}
+
 type Props = {
   studentId: string;
   name: string;
@@ -213,11 +222,7 @@ export function StudentProfile({ studentId, name, attempts, lessons, games, lear
   const [portalBusy, setPortalBusy] = useState(false);
   const [portalMessage, setPortalMessage] = useState('');
   const [profileTab, setProfileTab] = useState<'letters' | 'notes'>('letters');
-  const storedProgress = normalizeLearningProgress(learningProgress);
-  const lettersOnlyProgress = { letters: storedProgress.letters, syllables: [], words: [] };
-  const completedLessonIds = new Set(attempts.map(attempt => attempt.lessonId));
-  const historicalProgress = lessons.reduce((result, lesson) => completedLessonIds.has(lesson.id) ? mergeLearningProgress(result, learningProgressForLesson(lesson, games)) : result, blankProgress());
-  const progress = mergeLearningProgress(lettersOnlyProgress, historicalProgress);
+  const progress = planningProgressForStudent(learningProgress, attempts, lessons, games);
 
   const createPortalLink = async () => {
     setPortalBusy(true);
