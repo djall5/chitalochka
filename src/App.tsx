@@ -27,6 +27,7 @@ import { ClassroomPanel } from './realtime/ClassroomPanel';
 import { RoomInteraction, RoomRole } from './realtime/lessonRoom';
 import { useLessonRoom } from './realtime/useLessonRoom';
 import { CloudLogin, CloudWorkspace, WorkspaceSnapshot, createStudentPortalLink, loadStudentPortal, loadStudentDesert, mutateStudentDesert, saveStudentPortalAttempt, useCloudWorkspace } from './cloud/cloudWorkspace';
+import { LessonRoomSession, createLessonRoomSession, loadLessonRoomSession, saveLessonRoomView, closeLessonRoomSession } from './cloud/lessonRoomSession';
 import { StudentPortalDashboard } from './components/StudentPortalDashboard';
 import { DesertGame } from './components/DesertGame';
 import { applyDesertAction, blankDesert, DesertAction, DesertState, desertBalance } from './desert/desertModel';
@@ -177,24 +178,28 @@ function findElementAtPath(root: Element, path: number[]) {
 
 type Screen = 'library' | 'builder' | 'preview' | 'play' | 'edit' | 'student' | 'student-select' | 'student-portal' | 'desert';
 
-function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspace; studentPortalToken?: string }) {
+type ActiveRoomSession = LessonRoomSession & { role: RoomRole };
+
+function WorkspaceApp({ cloud, studentPortalToken = '', initialRoomSession }: { cloud: CloudWorkspace; studentPortalToken?: string; initialRoomSession?: ActiveRoomSession }) {
+  const [roomSession, setRoomSession] = useState<ActiveRoomSession | null>(initialRoomSession || null);
   const localWorkspaceAtLoadRef = useRef<WorkspaceSnapshot | null>(null);
   if (!localWorkspaceAtLoadRef.current) localWorkspaceAtLoadRef.current = readLocalWorkspace();
   const localWorkspaceAtLoad = localWorkspaceAtLoadRef.current;
-  const [games, setGames] = useState<GameLibraryItem[]>(() => mergeGameLibrary(cloud.snapshot?.games || localWorkspaceAtLoad.games));
+  const [games, setGames] = useState<GameLibraryItem[]>(() => mergeGameLibrary(initialRoomSession?.games || cloud.snapshot?.games || localWorkspaceAtLoad.games));
   const [students, setStudents] = useState<StudentRecord[]>(() => cloud.snapshot?.students || localWorkspaceAtLoad.students);
   const [activeStudentId, setActiveStudentId] = useState<string | null>(() => cloud.snapshot?.activeStudentId ?? localWorkspaceAtLoad.activeStudentId);
   const [lesson, setLesson] = useState<LessonData>(() => {
+    if (initialRoomSession?.lesson) return initialRoomSession.lesson;
     if (cloud.snapshot?.lesson) return cloud.snapshot.lesson;
     const portalLesson = studentPortalToken && cloud.snapshot?.students[0]?.lessons[0];
     if (portalLesson) return portalLesson;
     return localWorkspaceAtLoad.lesson;
   });
-  const [screen, setScreen] = useState<Screen>(studentPortalToken ? 'student-portal' : 'student-select');
+  const [screen, setScreen] = useState<Screen>(initialRoomSession ? 'play' : studentPortalToken ? 'student-portal' : 'student-select');
   const [builderEditing, setBuilderEditing] = useState(false);
-  const [currentStep, setCurrentStep] = useState(0);
-  const [score, setScore] = useState(0);
-  const [showCompletion, setShowCompletion] = useState(false);
+  const [currentStep, setCurrentStep] = useState(initialRoomSession?.view.currentStep || 0);
+  const [score, setScore] = useState(initialRoomSession?.view.score || 0);
+  const [showCompletion, setShowCompletion] = useState(Boolean(initialRoomSession?.view.showCompletion));
   const [desertSnapshot, setDesertSnapshot] = useState<{ studentId: string; desert: DesertState; earned: number } | null>(null);
   const [desertReturnScreen, setDesertReturnScreen] = useState<Screen>('student');
   const [desertLoading, setDesertLoading] = useState(false);
@@ -207,8 +212,8 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
   const [editorStartTab, setEditorStartTab] = useState(0);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [muted, setMuted] = useState<boolean>(() => isSoundMuted());
-  const [roomStudentName, setRoomStudentName] = useState('');
-  const [roomCharacter, setRoomCharacter] = useState<StudentRecord['character']>();
+  const [roomStudentName, setRoomStudentName] = useState(initialRoomSession?.studentName || '');
+  const [roomCharacter, setRoomCharacter] = useState<StudentRecord['character']>(initialRoomSession?.character as StudentRecord['character']);
   const lessonSurfaceRef = useRef<HTMLDivElement>(null);
   const activePointerId = useRef<number | null>(null);
   const cloudSnapshotRef = useRef<WorkspaceSnapshot | null>(null);
@@ -222,17 +227,6 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
   const lessonSaveInProgressRef = useRef(false);
 
   const collaboration = useLessonRoom({
-    onState: incoming => {
-      if (!incoming.lesson || typeof incoming.lesson !== 'object') return;
-      setLesson(incoming.lesson as LessonData);
-      setRoomStudentName(incoming.studentName || 'Ученик');
-      setRoomCharacter(incoming.character);
-      setCurrentStep(incoming.currentStep);
-      setScore(incoming.score);
-      setShowCompletion(Boolean(incoming.showCompletion));
-      if (incoming.desert && incoming.studentId) setDesertSnapshot({ studentId: incoming.studentId, desert: incoming.desert, earned: incoming.desertEarned || 0 });
-      setScreen(incoming.desertOpen ? 'desert' : 'play');
-    },
     onProgress: setScore,
     onStep: setCurrentStep,
     onView: incoming => {
@@ -246,6 +240,12 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
       if (action.label === 'открыть пустыню' && collaboration.role === 'teacher') void openDesert();
       if (action.label === 'закрыть пустыню' && collaboration.role === 'teacher') closeDesert();
     },
+    onClosed: () => {
+      showToast('Учитель завершил совместный урок.');
+      void collaboration.leave();
+      setRoomSession(null);
+      setScreen('student-select');
+    },
     onDesertAction: action => {
       if (collaboration.role === 'teacher') void performDesertAction(action).catch(error => showToast(error instanceof Error ? error.message : 'Не удалось сохранить оазис.'));
     },
@@ -254,6 +254,7 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
       if (!surface) return;
       const target = findElementAtPath(surface, interaction.path);
       if (!(target instanceof HTMLElement)) return;
+      if (collaboration.role === 'teacher' && interaction.role === 'student' && /^(дальше|пропустить|завершить|следующее)/i.test(target.textContent?.trim() || '')) return;
       const bounds = surface.getBoundingClientRect();
       const targetBounds = target.getBoundingClientRect();
       const targetX = Number.isFinite(interaction.targetX) ? interaction.targetX : interaction.x;
@@ -375,7 +376,7 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
   };
 
   useEffect(() => {
-    if (studentPortalToken || !cloud.snapshot || cloud.snapshot === cloudSnapshotRef.current) return;
+    if (studentPortalToken || roomSession || !cloud.snapshot || cloud.snapshot === cloudSnapshotRef.current) return;
     if (localStudentEditVersionRef.current !== savedStudentEditVersionRef.current) return;
     const localSnapshot = localWorkspaceAtLoadRef.current;
     const sharedStudent = localSnapshot?.students.some(student => cloud.snapshot?.students.some(cloudStudent => cloudStudent.id === student.id));
@@ -393,10 +394,10 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
     setGames(mergeGameLibrary(snapshot.games));
     setLesson(snapshot.lesson);
     setActiveStudentId(snapshot.activeStudentId);
-  }, [studentPortalToken, cloud.snapshot]);
+  }, [studentPortalToken, roomSession, cloud.snapshot]);
 
   useEffect(() => {
-    if (studentPortalToken || !cloud.session) return;
+    if (studentPortalToken || roomSession || !cloud.session) return;
     const refreshWorkspace = () => {
       if (document.visibilityState === 'visible') void cloud.refresh().catch(() => {});
     };
@@ -408,10 +409,10 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
       window.removeEventListener('focus', refreshWorkspace);
       document.removeEventListener('visibilitychange', refreshWorkspace);
     };
-  }, [studentPortalToken, cloud.session?.user.id, cloud.refresh]);
+  }, [studentPortalToken, roomSession, cloud.session?.user.id, cloud.refresh]);
 
   useEffect(() => {
-    if (!cloud.session || !cloud.ready) return;
+    if (roomSession?.role === 'student' || !cloud.session || !cloud.ready) return;
     const snapshot = { students, games, lesson, activeStudentId };
     const editVersion = localStudentEditVersionRef.current;
     let cancelled = false;
@@ -428,28 +429,47 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
       });
     }, 500);
     return () => { cancelled = true; window.clearTimeout(timer); window.clearTimeout(retryTimer); };
-  }, [students, games, lesson, activeStudentId, cloud.session?.user.id, cloud.ready, saveRetryKey]);
+  }, [students, games, lesson, activeStudentId, roomSession?.role, cloud.session?.user.id, cloud.ready, saveRetryKey]);
 
   useEffect(() => {
-    if (studentPortalToken || collaboration.role !== 'teacher' || collaboration.status !== 'connected' || (screen !== 'play' && screen !== 'desert')) return;
-    const state = { lesson, currentStep, score, studentName, showCompletion, studentId: activeStudentId || undefined, desertOpen: screen === 'desert', desert: desertSnapshot?.desert, desertEarned: desertSnapshot?.earned, character: activeStudent?.character };
-    collaboration.setLatestState(state);
-    void collaboration.publishState(state);
-  }, [studentPortalToken, collaboration.role, collaboration.status, screen, lesson, currentStep, score, studentName, showCompletion, activeStudentId, desertSnapshot, activeStudent?.character]);
+    if (!roomSession || collaboration.roomId) return;
+    const connect = roomSession.role === 'teacher'
+      ? collaboration.host(roomSession.roomId, 'Учитель')
+      : collaboration.join(roomSession.roomId, roomSession.studentName || 'Ученик');
+    void connect.catch(error => showToast(error instanceof Error ? error.message : 'Не удалось подключиться к комнате.'));
+  }, [roomSession, collaboration.roomId]);
+
+  useEffect(() => {
+    if (!roomSession || collaboration.role !== 'teacher' || collaboration.status !== 'connected') return;
+    const timer = window.setTimeout(() => {
+      void saveLessonRoomView(roomSession.roomId, { currentStep, score, showCompletion })
+        .catch(error => showToast(error instanceof Error ? error.message : 'Не удалось сохранить состояние комнаты.'));
+    }, 700);
+    return () => window.clearTimeout(timer);
+  }, [roomSession, collaboration.role, collaboration.status, currentStep, score, showCompletion]);
+
+  useEffect(() => {
+    if (!roomSession) return;
+    const remaining = new Date(roomSession.expiresAt).getTime() - Date.now();
+    if (remaining <= 0) {
+      void collaboration.leave();
+      setRoomSession(null);
+      showToast('Срок действия комнаты закончился.');
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      void collaboration.leave();
+      setRoomSession(null);
+      showToast('Срок действия комнаты закончился.');
+      setScreen('student-select');
+    }, remaining);
+    return () => window.clearTimeout(timer);
+  }, [roomSession]);
 
   useEffect(() => {
     if (collaboration.role !== 'student' || collaboration.status !== 'connected' || screen !== 'play') return;
     void collaboration.publishProgress(score);
   }, [collaboration.role, collaboration.status, screen, score]);
-
-  useEffect(() => {
-    if (!collaboration.configured || collaboration.roomId) return;
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('role') !== 'student') return;
-    const room = params.get('room');
-    if (!room) return;
-    void collaboration.join(room, 'Ученик').catch(error => showToast(error instanceof Error ? error.message : 'Не удалось подключиться к уроку'));
-  }, [collaboration.configured, collaboration.roomId]);
 
   useEffect(() => {
     const surface = lessonSurfaceRef.current;
@@ -684,6 +704,10 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
   };
 
   const handleGoToStep = (index: number) => {
+    if (roomSession?.role === 'student') {
+      showToast('Переходами между заданиями управляет учитель.');
+      return;
+    }
     const next = Math.max(0, Math.min(index, orderedGames.length - 1));
     if (next !== currentStep) playTransitionSound();
     setCurrentStep(next);
@@ -732,7 +756,11 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
   };
 
   const handleFinishLesson = async () => {
-    if (collaboration.role === 'student') collaboration.publishAction('завершил урок');
+    if (roomSession?.role === 'student') {
+      collaboration.publishAction('завершил урок');
+      showToast('Учитель завершит урок, когда будет готово.');
+      return;
+    }
     if (!completedRun.current && activeStudent) {
       completedRun.current = true;
       const learningProgress = collectLessonLearningProgress(lesson, orderedGames.map(game => ({
@@ -847,7 +875,50 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
     } catch { showToast('Баллы сохранены. Обновите страницу, чтобы проверить баланс пустыни.'); }
   };
 
-  const createClassroom = (name: string) => collaboration.create(name, { lesson, currentStep, score, studentName, showCompletion, studentId: activeStudentId || undefined, character: activeStudent?.character });
+  const createClassroom = async (name: string) => {
+    if (!cloud.session) throw new Error('Чтобы создать комнату, войдите в кабинет учителя.');
+    setLessonSaveInProgress(true);
+    try {
+      setLessonSaveMessage('Подготавливаем изображения и видео для ученика…');
+      const prepared = await cloud.prepareMedia({ students, games, lesson, activeStudentId }, progress => {
+        setLessonSaveMessage(`Подготавливаем файлы урока: ${progress.completed} из ${progress.total}.`);
+      });
+      setStudents(prepared.students);
+      setGames(mergeGameLibrary(prepared.games));
+      setLesson(prepared.lesson);
+      setLessonSaveMessage('Создаём защищённую комнату…');
+      const session = await createLessonRoomSession({
+        lesson: prepared.lesson,
+        games: prepared.games,
+        view: { currentStep, score, showCompletion },
+        studentName,
+        studentId: activeStudentId || undefined,
+        character: activeStudent?.character,
+      });
+      const active: ActiveRoomSession = { ...session, role: 'teacher' };
+      setRoomSession(active);
+      await collaboration.host(session.roomId, name || 'Учитель');
+      const url = new URL(window.location.href);
+      url.search = new URLSearchParams({ room: session.roomId, token: session.token, role: 'teacher' }).toString();
+      window.history.replaceState(null, '', url.toString());
+      return session.roomId;
+    } finally {
+      setLessonSaveInProgress(false);
+    }
+  };
+
+  const roomLink = roomSession ? `${window.location.origin}${window.location.pathname}?${new URLSearchParams({ room: roomSession.roomId, token: roomSession.token, role: 'student' }).toString()}` : undefined;
+  const leaveClassroom = async () => {
+    if (roomSession?.role === 'teacher') {
+      collaboration.publishClosed();
+      await closeLessonRoomSession(roomSession.roomId);
+    }
+    await collaboration.leave();
+    setRoomSession(null);
+    const url = new URL(window.location.href);
+    url.search = '';
+    window.history.replaceState(null, '', url.toString());
+  };
 
   return (
     <div className="min-h-screen w-full flex flex-col items-center justify-between p-3 md:p-6 bg-cover bg-center bg-no-repeat relative font-sans text-slate-800" style={{ backgroundImage: `linear-gradient(rgba(253, 232, 244, 0.75), rgba(245, 235, 255, 0.82)), url('https://images.unsplash.com/photo-1503676260728-1c00da094a0b?auto=format&fit=crop&w=1920&q=80')`, backgroundAttachment: 'fixed' }}>
@@ -864,17 +935,17 @@ function WorkspaceApp({ cloud, studentPortalToken = '' }: { cloud: CloudWorkspac
         <div className="flex min-w-0 items-center gap-2"><div className="w-8 h-8 shrink-0 rounded-xl bg-gradient-to-tr from-pink-500 to-rose-400 text-white flex items-center justify-center font-black text-sm shadow-xs">{screen === 'library' || screen === 'student-select' || screen === 'student-portal' ? <BookOpen className="w-4 h-4" /> : screen === 'builder' ? <Edit3 className="w-4 h-4" /> : lesson.targetLetter || 'Й'}</div><div className="min-w-0"><div className="truncate max-w-[210px] sm:max-w-sm font-black text-xs md:text-sm text-slate-800">{screen === 'library' ? `Уроки · ${studentName}` : screen === 'student-select' ? 'Выбор ученика' : screen === 'student-portal' ? `Кабинет · ${studentName}` : screen === 'builder' ? 'Создание нового урока' : screen === 'preview' ? `Предпросмотр: ${lesson.title || 'Новый урок'}` : lesson.title}</div><div className="text-[10px] text-pink-600 font-bold hidden sm:block">{screen === 'play' ? `🎮 Ученик: ${displayStudentName}` : screen === 'preview' ? '👀 Проверка урока до сохранения' : screen === 'edit' ? '✏️ Режим конструктора' : screen === 'builder' ? 'Соберите занятие из игр' : screen === 'student-select' ? 'Выберите или создайте карточку' : screen === 'student-portal' ? 'Твои занятия и успехи' : 'Пространство учителя'}</div></div></div>
         <div className="flex items-center gap-1.5">
           {screen === 'play' && <button onClick={handleToggleSound} title={muted ? 'Включить звуковые эффекты' : 'Выключить звуковые эффекты'} className="p-1.5 rounded-xl bg-pink-50 hover:bg-pink-100 text-pink-700 border border-pink-200">{muted ? <VolumeX className="w-4 h-4 text-slate-400" /> : <Volume2 className="w-4 h-4 text-pink-600" />}</button>}
-          {screen === 'play' && <button onClick={handleFinishLesson} className="flex items-center gap-1 rounded-xl bg-emerald-500 px-3 py-1.5 text-xs font-black text-white shadow"><Award className="h-3.5 w-3.5" />Завершить урок</button>}
-          {screen === 'play' && <button onClick={() => { setShowCompletion(false); void collaboration.leave(); setScreen(studentPortalToken ? 'student-portal' : 'library'); }} aria-label={studentPortalToken ? 'Вернуться в кабинет ученика' : 'Выйти из урока к списку уроков'} className="flex items-center gap-1 rounded-xl bg-slate-100 px-3 py-1.5 text-xs font-black text-slate-600"><Library className="h-3.5 w-3.5" />{studentPortalToken ? 'В кабинет' : 'Из урока'}</button>}
+          {screen === 'play' && roomSession?.role !== 'student' && <button onClick={handleFinishLesson} className="flex items-center gap-1 rounded-xl bg-emerald-500 px-3 py-1.5 text-xs font-black text-white shadow"><Award className="h-3.5 w-3.5" />Завершить урок</button>}
+          {screen === 'play' && <button onClick={() => { setShowCompletion(false); void (roomSession ? leaveClassroom() : collaboration.leave()); setScreen(studentPortalToken ? 'student-portal' : 'library'); }} aria-label={studentPortalToken ? 'Вернуться в кабинет ученика' : 'Выйти из урока к списку уроков'} className="flex items-center gap-1 rounded-xl bg-slate-100 px-3 py-1.5 text-xs font-black text-slate-600"><Library className="h-3.5 w-3.5" />{studentPortalToken ? 'В кабинет' : 'Из урока'}</button>}
           {(screen === 'edit' || screen === 'builder') && <button onClick={() => setScreen('library')} className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-pink-50 hover:bg-pink-100 text-pink-700 font-black text-xs border border-pink-200"><Library className="w-3.5 h-3.5" /><span className="hidden sm:inline">Мои уроки</span></button>}
-          {screen === 'play' && !studentPortalToken && <button onClick={() => handleOpenStepInEditor(currentStep)} title="Редактировать текущее задание" className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-pink-50 hover:bg-pink-100 text-pink-700 font-black text-xs border border-pink-200"><Edit3 className="w-3.5 h-3.5" /><span className="hidden sm:inline">Редактировать шаг</span></button>}
+          {screen === 'play' && !studentPortalToken && roomSession?.role !== 'student' && <button onClick={() => handleOpenStepInEditor(currentStep)} title="Редактировать текущее задание" className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-pink-50 hover:bg-pink-100 text-pink-700 font-black text-xs border border-pink-200"><Edit3 className="w-3.5 h-3.5" /><span className="hidden sm:inline">Редактировать шаг</span></button>}
           {screen === 'preview' && <button onClick={() => setScreen('builder')} className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-pink-50 hover:bg-pink-100 text-pink-700 font-black text-xs border border-pink-200"><Edit3 className="w-3.5 h-3.5" />Вернуться к редактированию</button>}
           {screen === 'edit' && <button onClick={() => { playTransitionSound(); setScreen('play'); }} className="flex items-center gap-1 px-4 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs shadow-md"><Play className="w-3.5 h-3.5 fill-white" />В игру ▶</button>}
         </div>
       </header>
 
       <main className={`w-full ${wide ? 'max-w-6xl' : 'max-w-2xl'} flex-1 flex flex-col items-center justify-center`}>
-        {screen === 'play' && !studentPortalToken && <ClassroomPanel configured={collaboration.configured} roomId={collaboration.roomId} role={collaboration.role} status={collaboration.status} statusMessage={collaboration.statusMessage} members={collaboration.members} lastAction={collaboration.lastAction} onCreate={createClassroom} onJoin={collaboration.join} onLeave={collaboration.leave} />}
+        {screen === 'play' && !studentPortalToken && (!roomSession || roomSession.role === 'teacher') && <ClassroomPanel configured={collaboration.configured} roomId={collaboration.roomId} roomLink={roomLink} expiresAt={roomSession?.expiresAt} role={collaboration.role} status={collaboration.status} statusMessage={collaboration.statusMessage} members={collaboration.members} lastAction={collaboration.lastAction} onCreate={createClassroom} onJoin={collaboration.join} onLeave={leaveClassroom} />}
         {screen === 'student-select' && <StudentSelection students={students} onSelect={handleSelectStudent} onCreate={handleCreateStudent} />}
         {screen === 'student-portal' && activeStudent && <StudentPortalDashboard student={activeStudent} availablePoints={desertSnapshot?.studentId === activeStudent.id ? desertBalance(desertSnapshot.earned, desertSnapshot.desert) : null} onStart={item => handleOpenLesson(item, 'play')} />}
         {screen === 'library' && <TeacherWorkspace lessons={lessons} games={games} onNewLesson={handleNewLesson} onUseGameInLesson={handleUseGameInLesson} onOpenLesson={handleOpenLesson} onDeleteLesson={handleDeleteLesson} getLessonStatus={getLessonStatus} getLessonCompletedAt={getLessonCompletedAt} onLessonStatusChange={handleLessonStatusChange} onCreateGame={handleCreateGame} onOpenStudent={() => setScreen('student')} studentName={studentName} onSwitchStudent={() => setScreen('student-select')} />}
@@ -949,13 +1020,33 @@ function StudentPortalEntry({ token, cloud }: { token: string; cloud: CloudWorks
   return <WorkspaceApp key={token} cloud={{ ...cloud, session: null, ready: true, snapshot, save: async () => {} }} studentPortalToken={token} />;
 }
 
+function ClassroomEntry({ roomId, token, role, cloud }: { roomId: string; token: string; role: RoomRole; cloud: CloudWorkspace }) {
+  const [session, setSession] = useState<LessonRoomSession | null>(null);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    let active = true;
+    void loadLessonRoomSession(roomId, token).then(result => { if (active) setSession(result); }).catch(reason => {
+      if (active) setError(reason instanceof Error ? reason.message : 'Не удалось открыть совместный урок.');
+    });
+    return () => { active = false; };
+  }, [roomId, token]);
+  if (error) return <main className="grid min-h-screen place-items-center bg-gradient-to-br from-pink-100 via-violet-50 to-amber-50 p-4 font-sans text-slate-800"><section className="max-w-md rounded-3xl border-2 border-pink-200 bg-white p-7 text-center shadow-xl"><div className="text-4xl">🔗</div><h1 className="mt-3 text-xl font-black">Комната недоступна</h1><p className="mt-2 text-sm font-semibold text-slate-500">{error}</p></section></main>;
+  if (!session) return <main className="grid min-h-screen place-items-center bg-pink-50 font-sans text-sm font-bold text-pink-700">Открываем совместный урок…</main>;
+  return <WorkspaceApp key={`${roomId}-${role}`} cloud={role === 'student' ? { ...cloud, session: null, ready: true, save: async () => {} } : cloud} initialRoomSession={{ ...session, role }} />;
+}
+
 export default function App() {
   const cloud = useCloudWorkspace();
   const params = new URLSearchParams(window.location.search);
   const portalToken = params.get('portal') || new URLSearchParams(window.location.hash.slice(1)).get('portal');
-  const isStudentLink = params.get('role') === 'student';
+  const roomId = params.get('room') || '';
+  const roomToken = params.get('token') || '';
+  const roomRole: RoomRole = params.get('role') === 'teacher' ? 'teacher' : 'student';
   if (portalToken) return <StudentPortalEntry token={portalToken} cloud={cloud} />;
-  if (isStudentLink) return <WorkspaceApp cloud={{ ...cloud, session: null, save: async () => {} }} />;
+  if (roomId && roomToken) {
+    if (roomRole === 'teacher' && (!cloud.configured || !cloud.session)) return <CloudLogin configured={cloud.configured} signIn={cloud.signIn} signUp={cloud.signUp} />;
+    return <ClassroomEntry roomId={roomId} token={roomToken} role={roomRole} cloud={cloud} />;
+  }
   if (!cloud.configured || !cloud.session) return <CloudLogin configured={cloud.configured} signIn={cloud.signIn} signUp={cloud.signUp} />;
   if (!cloud.ready && cloud.loadError) return <main className="grid min-h-screen place-items-center bg-gradient-to-br from-pink-100 via-violet-50 to-amber-50 p-4 font-sans text-slate-800"><section className="max-w-md rounded-3xl border-2 border-pink-200 bg-white p-7 text-center shadow-xl"><div className="text-4xl">☁️</div><h1 className="mt-3 text-xl font-black">Не удалось загрузить данные</h1><p className="mt-2 text-sm font-semibold text-slate-500">{cloud.loadError}</p><button onClick={cloud.reload} className="mt-5 w-full rounded-xl bg-gradient-to-r from-pink-500 to-purple-600 px-4 py-3 text-sm font-black text-white">Повторить загрузку</button></section></main>;
   if (!cloud.ready) return <main className="grid min-h-screen place-items-center bg-pink-50 font-sans text-sm font-bold text-pink-700">Загружаем ваши данные…</main>;

@@ -1,21 +1,7 @@
 import { createClient, RealtimeChannel, SupabaseClient } from '@supabase/supabase-js';
-import type { CharacterImages } from '../components/DesertGame';
-import type { DesertAction, DesertState } from '../desert/desertModel';
+import type { DesertAction } from '../desert/desertModel';
 
 export type RoomRole = 'teacher' | 'student';
-
-export interface ClassroomState {
-  lesson: unknown;
-  currentStep: number;
-  score: number;
-  studentName?: string;
-  showCompletion?: boolean;
-  studentId?: string;
-  desertOpen?: boolean;
-  desert?: DesertState;
-  desertEarned?: number;
-  character?: CharacterImages;
-}
 
 export interface ClassroomViewState {
   currentStep: number;
@@ -52,7 +38,6 @@ export interface RoomInteraction {
 }
 
 export interface LessonRoomCallbacks {
-  onState?: (state: ClassroomState) => void;
   onProgress?: (score: number) => void;
   onStep?: (step: number) => void;
   onView?: (view: ClassroomViewState) => void;
@@ -60,12 +45,12 @@ export interface LessonRoomCallbacks {
   onCursor?: (cursor: RoomCursor | null) => void;
   onInteraction?: (interaction: RoomInteraction) => void;
   onAction?: (action: { role: RoomRole; name: string; label: string }) => void;
+  onClosed?: () => void;
   onDesertAction?: (action: DesertAction) => void;
   onStatus?: (status: 'connecting' | 'connected' | 'disconnected' | 'error', message?: string) => void;
 }
 
-const ROOM_ID_PATTERN = /^[a-f0-9]{16}$/i;
-const MESSAGE_LIMIT = 180_000;
+const ROOM_ID_PATTERN = /^[a-f0-9-]{16,64}$/i;
 
 function makeClient(): SupabaseClient | null {
   const url = import.meta.env.VITE_SUPABASE_URL;
@@ -78,7 +63,6 @@ export class LessonRoom {
   private channel: RealtimeChannel | null = null;
   private member: RoomMember | null = null;
   private callbacks: LessonRoomCallbacks = {};
-  private latestState: ClassroomState | null = null;
   private broadcastTimer = 0;
   private interactionTimer = 0;
 
@@ -90,25 +74,21 @@ export class LessonRoom {
     return Boolean(this.client);
   }
 
-  async create(name: string, initialState?: ClassroomState) {
-    const roomId = crypto.randomUUID().replaceAll('-', '').slice(0, 16);
-    this.latestState = initialState || null;
+  async host(roomId: string, name: string) {
+    if (!ROOM_ID_PATTERN.test(roomId)) throw new Error('Некорректный идентификатор комнаты.');
     await this.connect(roomId, 'teacher', name);
     return roomId;
   }
 
   async join(roomId: string, name: string) {
-    const normalized = roomId.replace(/[^a-f0-9]/gi, '').slice(0, 16);
-    if (!ROOM_ID_PATTERN.test(normalized)) throw new Error('Введите код из 16 латинских букв и цифр.');
-    await this.connect(normalized, 'student', name);
-    return normalized;
+    if (!ROOM_ID_PATTERN.test(roomId)) throw new Error('Ссылка на комнату недействительна.');
+    await this.connect(roomId, 'student', name);
+    return roomId;
   }
 
   private async connect(roomId: string, role: RoomRole, name: string) {
     if (!this.client) throw new Error('Сначала подключите Supabase: заполните VITE_SUPABASE_URL и VITE_SUPABASE_PUBLISHABLE_KEY.');
-    const initialState = this.latestState;
     await this.leave();
-    this.latestState = initialState;
     this.callbacks.onStatus?.('connecting');
     this.member = { id: crypto.randomUUID(), role, name: name.trim() || (role === 'teacher' ? 'Учитель' : 'Ученик') };
     const channel = this.client.channel(`lesson-room:${roomId}`, {
@@ -117,18 +97,15 @@ export class LessonRoom {
     this.channel = channel;
 
     channel
-      .on('broadcast', { event: 'lesson-state' }, ({ payload }) => this.callbacks.onState?.(payload as ClassroomState))
       .on('broadcast', { event: 'student-progress' }, ({ payload }) => this.callbacks.onProgress?.(Number(payload.score) || 0))
       .on('broadcast', { event: 'student-step' }, ({ payload }) => this.callbacks.onStep?.(Number(payload.step) || 0))
       .on('broadcast', { event: 'lesson-view' }, ({ payload }) => this.callbacks.onView?.(payload as ClassroomViewState))
       .on('broadcast', { event: 'cursor' }, ({ payload }) => this.callbacks.onCursor?.(payload as RoomCursor))
       .on('broadcast', { event: 'interaction' }, ({ payload }) => this.callbacks.onInteraction?.(payload as RoomInteraction))
       .on('broadcast', { event: 'action' }, ({ payload }) => this.callbacks.onAction?.(payload as { role: RoomRole; name: string; label: string }))
+      .on('broadcast', { event: 'room-closed' }, () => this.callbacks.onClosed?.())
       .on('broadcast', { event: 'desert-action' }, ({ payload }) => {
         if (this.member?.role === 'teacher') this.callbacks.onDesertAction?.(payload as DesertAction);
-      })
-      .on('broadcast', { event: 'state-request' }, () => {
-        if (this.member?.role === 'teacher' && this.latestState) void this.publishState(this.latestState);
       })
       .on('presence', { event: 'sync' }, () => {
         const state = channel.presenceState<RoomMember>();
@@ -140,29 +117,12 @@ export class LessonRoom {
         if (status === 'SUBSCRIBED') {
           this.callbacks.onStatus?.('connected');
           await channel.track(this.member!);
-          if (role === 'student') void channel.send({ type: 'broadcast', event: 'state-request', payload: {} });
-          else if (this.latestState) void this.publishState(this.latestState);
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           this.callbacks.onStatus?.('error', 'Не удалось подключиться к комнате. Проверьте настройки Supabase и код.');
         } else if (status === 'CLOSED') {
           this.callbacks.onStatus?.('disconnected');
         }
       });
-  }
-
-  setLatestState(state: ClassroomState) {
-    this.latestState = state;
-  }
-
-  async publishState(state: ClassroomState) {
-    this.latestState = state;
-    if (this.member?.role !== 'teacher' || !this.channel) return;
-    const serialized = JSON.stringify(state);
-    if (serialized.length > MESSAGE_LIMIT) {
-      this.callbacks.onStatus?.('error', 'Урок слишком большой для синхронизации: уменьшите размер загруженных изображений.');
-      return;
-    }
-    await this.channel.send({ type: 'broadcast', event: 'lesson-state', payload: state });
   }
 
   async publishProgress(score: number) {
@@ -185,7 +145,7 @@ export class LessonRoom {
   publishCursor(x: number, y: number, clickAt?: number) {
     if (!this.channel || !this.member) return;
     const now = Date.now();
-    if (!clickAt && now - this.broadcastTimer < 45) return;
+    if (!clickAt && now - this.broadcastTimer < 100) return;
     this.broadcastTimer = now;
     void this.channel.send({
       type: 'broadcast',
@@ -197,7 +157,7 @@ export class LessonRoom {
   publishInteraction(interaction: Omit<RoomInteraction, 'role' | 'name'>) {
     if (!this.channel || !this.member) return;
     const now = Date.now();
-    if (interaction.type === 'pointermove' && now - this.interactionTimer < 45) return;
+    if (interaction.type === 'pointermove' && now - this.interactionTimer < 100) return;
     this.interactionTimer = now;
     void this.channel.send({
       type: 'broadcast',
@@ -211,6 +171,11 @@ export class LessonRoom {
     void this.channel.send({ type: 'broadcast', event: 'action', payload: { role: this.member.role, name: this.member.name, label } });
   }
 
+  publishClosed() {
+    if (!this.channel || this.member?.role !== 'teacher') return;
+    void this.channel.send({ type: 'broadcast', event: 'room-closed', payload: {} });
+  }
+
   publishDesertAction(action: DesertAction) {
     if (this.member?.role !== 'student' || !this.channel) return;
     void this.channel.send({ type: 'broadcast', event: 'desert-action', payload: action });
@@ -220,7 +185,6 @@ export class LessonRoom {
     const channel = this.channel;
     this.channel = null;
     this.member = null;
-    this.latestState = null;
     if (channel && this.client) await this.client.removeChannel(channel);
   }
 }
