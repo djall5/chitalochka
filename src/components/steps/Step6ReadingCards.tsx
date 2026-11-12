@@ -79,7 +79,9 @@ export const Step6ReadingCards: React.FC<Props> = ({ config, onPrev, onNext, onC
               }`}
             >
               <div className="text-3xl md:text-4xl mb-1.5 group-hover:scale-110 transition-transform">
-                {card.icon || '📖'}
+                {card.imageDataUrl
+                  ? <img src={card.imageDataUrl} alt="" className="h-14 w-14 rounded-xl object-contain object-center" />
+                  : card.icon || '📖'}
               </div>
               <div className="text-base md:text-lg font-black tracking-wide text-slate-800">
                 <span className="whitespace-nowrap">{displayWord}</span>

@@ -50,6 +50,7 @@ export const LessonEditor: React.FC<Props> = ({
   const [savedNotice, setSavedNotice] = useState(false);
   const [importJsonText, setImportJsonText] = useState('');
   const [showImportBox, setShowImportBox] = useState(false);
+  const [cardImageError, setCardImageError] = useState('');
   const [emojiPickerCardId, setEmojiPickerCardId] = useState<string | null>(null);
 
   const handleSave = () => {
@@ -287,6 +288,23 @@ export const LessonEditor: React.FC<Props> = ({
         step6: { ...prev.step6, cards: copy },
       };
     });
+  };
+
+  const handleCardImageUpload = async (idx: number, file?: File) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { setCardImageError('Выберите файл изображения.'); return; }
+    if (file.size > 12 * 1024 * 1024) { setCardImageError('Изображение должно быть меньше 12 МБ.'); return; }
+    try {
+      const bitmap = await createImageBitmap(file);
+      const scale = Math.min(1, 600 / bitmap.width, 600 / bitmap.height);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      canvas.getContext('2d')?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      bitmap.close();
+      handleUpdateCard(idx, { imageDataUrl: canvas.toDataURL('image/jpeg', 0.84) });
+      setCardImageError('');
+    } catch { setCardImageError('Не удалось прочитать этот файл изображения.'); }
   };
 
   const handleRemoveCard = (idx: number) => {
@@ -1097,10 +1115,10 @@ export const LessonEditor: React.FC<Props> = ({
                 >
                   <div className="flex items-start gap-2">
                     <div className="relative">
-                      <button type="button" title="Выбрать эмодзи" onClick={() => setEmojiPickerCardId(current => current === card.id ? null : card.id)} className="flex h-11 w-12 items-center justify-center rounded-xl border border-slate-300 bg-slate-50 text-2xl">
-                        {card.icon || emojiForWord(card.displayWord || card.speakWord)}
+                      <button type="button" title="Выбрать эмодзи" onClick={() => setEmojiPickerCardId(current => current === card.id ? null : card.id)} className="flex h-11 w-12 items-center justify-center overflow-hidden rounded-xl border border-slate-300 bg-slate-50 text-2xl">
+                        {card.imageDataUrl ? <img src={card.imageDataUrl} alt="Загруженная картинка" className="h-full w-full object-contain" /> : card.icon || emojiForWord(card.displayWord || card.speakWord)}
                       </button>
-                      {emojiPickerCardId === card.id && <div className="absolute z-10 mt-1 grid grid-cols-3 gap-1 rounded-xl border border-pink-200 bg-white p-1.5 shadow-lg">{emojiOptionsForWord(card.displayWord || card.speakWord).map(emoji => <button key={emoji} type="button" className="rounded-lg p-1 text-xl hover:bg-pink-50" onClick={() => { handleUpdateCard(idx, { icon: emoji }); setEmojiPickerCardId(null); }}>{emoji}</button>)}</div>}
+                      {emojiPickerCardId === card.id && <div className="absolute z-10 mt-1 grid grid-cols-3 gap-1 rounded-xl border border-pink-200 bg-white p-1.5 shadow-lg">{emojiOptionsForWord(card.displayWord || card.speakWord).map(emoji => <button key={emoji} type="button" className="rounded-lg p-1 text-xl hover:bg-pink-50" onClick={() => { handleUpdateCard(idx, { icon: emoji, imageDataUrl: undefined }); setEmojiPickerCardId(null); }}>{emoji}</button>)}</div>}
                     </div>
                     <div className="flex-1">
                       <label className="block text-[10px] font-bold text-slate-500">
@@ -1115,7 +1133,9 @@ export const LessonEditor: React.FC<Props> = ({
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-end">
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <label className="cursor-pointer rounded-lg bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-700 hover:bg-violet-100">{card.imageDataUrl ? 'Заменить картинку' : 'Загрузить картинку'}<input type="file" accept="image/*" className="hidden" onChange={event => { void handleCardImageUpload(idx, event.target.files?.[0]); event.currentTarget.value = ''; }} /></label>
+                    {card.imageDataUrl && <button onClick={() => handleUpdateCard(idx, { imageDataUrl: undefined })} className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600 hover:bg-slate-200">Эмоджи</button>}
                     <button
                       onClick={() => handleRemoveCard(idx)}
                       title="Удалить карточку"
@@ -1128,6 +1148,7 @@ export const LessonEditor: React.FC<Props> = ({
                 </div>
               ))}
             </div>
+            {cardImageError && <p className="rounded-xl bg-rose-50 px-3 py-2 text-xs font-bold text-rose-600">{cardImageError}</p>}
           </div>
         )}
       </div>

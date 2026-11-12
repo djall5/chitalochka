@@ -63,6 +63,8 @@ export interface Step5Config {
 
 export interface ReadingCardItem {
   id: string;
+  /** An optional teacher-uploaded picture shown instead of the emoji. */
+  imageDataUrl?: string;
   icon: string;
   /** The original word as entered by the teacher. */
   displayWord: string;
