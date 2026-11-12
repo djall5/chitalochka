@@ -37,6 +37,10 @@ export interface RoomInteraction {
   targetY: number;
   pointerType: string;
   button: number;
+  /** The lesson step makes delayed events harmless after the teacher changes games. */
+  step?: number;
+  /** Stable fallback for buttons when child and teacher DOM layouts differ. */
+  controlIndex?: number;
 }
 
 export interface LessonRoomCallbacks {

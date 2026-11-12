@@ -262,9 +262,13 @@ function WorkspaceApp({ cloud, studentPortalToken = '', initialRoomSession }: { 
     onInteraction: interaction => {
       const surface = lessonSurfaceRef.current;
       if (!surface) return;
-      const target = findElementAtPath(surface, interaction.path);
+      if (Number.isInteger(interaction.step) && interaction.step !== currentStep) return;
+      const controls = Array.from(surface.querySelectorAll<HTMLElement>('button,[role="button"]'));
+      const fallbackControl = Number.isInteger(interaction.controlIndex) ? controls[interaction.controlIndex!] : null;
+      const target = fallbackControl || findElementAtPath(surface, interaction.path);
       if (!(target instanceof HTMLElement)) return;
-      if (collaboration.role === 'teacher' && interaction.role === 'student' && /^(дальше|пропустить|завершить|следующее)/i.test(target.textContent?.trim() || '')) return;
+      const control = target.closest<HTMLElement>('button,[role="button"]') || target;
+      if (collaboration.role === 'teacher' && interaction.role === 'student' && /^(дальше|пропустить|завершить|следующее)/i.test(control.textContent?.trim() || '')) return;
       const bounds = surface.getBoundingClientRect();
       const targetBounds = target.getBoundingClientRect();
       const targetX = Number.isFinite(interaction.targetX) ? interaction.targetX : interaction.x;
@@ -275,10 +279,10 @@ function WorkspaceApp({ cloud, studentPortalToken = '', initialRoomSession }: { 
       const isUp = interaction.type === 'pointerup';
       const buttons = isDown || (!isUp && interaction.type === 'pointermove') ? 1 : 0;
       const eventOptions = { bubbles: true, cancelable: true, clientX, clientY, pointerId: 1, pointerType: interaction.pointerType, button: interaction.button, buttons, isPrimary: true };
-      target.dispatchEvent(new PointerEvent(interaction.type, eventOptions));
+      control.dispatchEvent(new PointerEvent(interaction.type, eventOptions));
       const mouseType = interaction.type === 'pointerdown' ? 'mousedown' : interaction.type === 'pointermove' ? 'mousemove' : 'mouseup';
-      target.dispatchEvent(new MouseEvent(mouseType, { bubbles: true, cancelable: true, clientX, clientY, button: interaction.button, buttons }));
-      if (isUp) target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX, clientY, button: interaction.button }));
+      control.dispatchEvent(new MouseEvent(mouseType, { bubbles: true, cancelable: true, clientX, clientY, button: interaction.button, buttons }));
+      if (isUp) control.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX, clientY, button: interaction.button }));
     },
   });
 
@@ -499,10 +503,13 @@ function WorkspaceApp({ cloud, studentPortalToken = '', initialRoomSession }: { 
       const x = (event.clientX - bounds.left) / bounds.width;
       const y = (event.clientY - bounds.top) / bounds.height;
       if (x < 0 || x > 1 || y < 0 || y > 1) return;
-      const targetBounds = event.target.getBoundingClientRect();
+      const control = event.target.closest<HTMLElement>('button,[role="button"]');
+      const targetBounds = (control || event.target).getBoundingClientRect();
       const targetX = (event.clientX - targetBounds.left) / targetBounds.width;
       const targetY = (event.clientY - targetBounds.top) / targetBounds.height;
-      collaboration.publishInteraction({ type, path, x, y, targetX, targetY, pointerType: event.pointerType, button: event.button });
+      const controls = Array.from(surface.querySelectorAll('button,[role="button"]'));
+      const controlIndex = control ? controls.indexOf(control) : -1;
+      collaboration.publishInteraction({ type, path, x, y, targetX, targetY, pointerType: event.pointerType, button: event.button, step: currentStep, controlIndex: controlIndex >= 0 ? controlIndex : undefined });
     };
     const onMove = (event: PointerEvent) => {
       if (!event.isTrusted) return;
@@ -536,7 +543,7 @@ function WorkspaceApp({ cloud, studentPortalToken = '', initialRoomSession }: { 
       surface.removeEventListener('pointercancel', onUp);
       surface.removeEventListener('pointerleave', onLeave);
     };
-  }, [collaboration.roomId, collaboration.status, screen]);
+  }, [collaboration.roomId, collaboration.status, screen, currentStep]);
 
   useEffect(() => {
     if (!collaboration.roomId || collaboration.status !== 'connected' || screen !== 'play') return;
