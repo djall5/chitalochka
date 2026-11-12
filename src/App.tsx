@@ -216,6 +216,7 @@ function WorkspaceApp({ cloud, studentPortalToken = '', initialRoomSession }: { 
   const [muted, setMuted] = useState<boolean>(() => isSoundMuted());
   const [roomStudentName, setRoomStudentName] = useState(initialRoomSession?.studentName || '');
   const [roomCharacter, setRoomCharacter] = useState<StudentRecord['character']>(initialRoomSession?.character as StudentRecord['character']);
+  const [studentReadyStep, setStudentReadyStep] = useState<number | null>(initialRoomSession?.view.studentReadyStep ?? null);
   const lessonSurfaceRef = useRef<HTMLDivElement>(null);
   const activePointerId = useRef<number | null>(null);
   const cloudSnapshotRef = useRef<WorkspaceSnapshot | null>(null);
@@ -235,9 +236,16 @@ function WorkspaceApp({ cloud, studentPortalToken = '', initialRoomSession }: { 
       setCurrentStep(incoming.currentStep);
       setScore(incoming.score);
       setShowCompletion(incoming.showCompletion);
+      setStudentReadyStep(Number.isInteger(incoming.studentReadyStep) ? incoming.studentReadyStep! : null);
     },
     onAction: action => {
       if (action.role !== 'student') return;
+      const readyMatch = /^готово-задание:(\d+)$/.exec(action.label);
+      if (readyMatch && collaboration.role === 'teacher') {
+        setStudentReadyStep(Number(readyMatch[1]));
+        showToast('Ученик выполнил задание и ждёт перехода.');
+        return;
+      }
       if (action.label === 'завершил урок' && collaboration.role === 'teacher') void handleFinishLesson();
       if (action.label === 'открыть пустыню' && collaboration.role === 'teacher') void openDesert();
       if (action.label === 'закрыть пустыню' && collaboration.role === 'teacher') closeDesert();
@@ -444,11 +452,11 @@ function WorkspaceApp({ cloud, studentPortalToken = '', initialRoomSession }: { 
   useEffect(() => {
     if (!roomSession || collaboration.role !== 'teacher' || collaboration.status !== 'connected') return;
     const timer = window.setTimeout(() => {
-      void saveLessonRoomView(roomSession.roomId, { currentStep, score, showCompletion })
+      void saveLessonRoomView(roomSession.roomId, { currentStep, score, showCompletion, studentReadyStep })
         .catch(error => showToast(error instanceof Error ? error.message : 'Не удалось сохранить состояние комнаты.'));
     }, 700);
     return () => window.clearTimeout(timer);
-  }, [roomSession, collaboration.role, collaboration.status, currentStep, score, showCompletion]);
+  }, [roomSession, collaboration.role, collaboration.status, currentStep, score, showCompletion, studentReadyStep]);
 
   useEffect(() => {
     if (!roomSession) return;
@@ -532,8 +540,8 @@ function WorkspaceApp({ cloud, studentPortalToken = '', initialRoomSession }: { 
 
   useEffect(() => {
     if (!collaboration.roomId || collaboration.status !== 'connected' || screen !== 'play') return;
-    collaboration.publishView({ currentStep, score, showCompletion });
-  }, [collaboration.roomId, collaboration.status, screen, currentStep, score, showCompletion]);
+    collaboration.publishView({ currentStep, score, showCompletion, studentReadyStep });
+  }, [collaboration.roomId, collaboration.status, screen, currentStep, score, showCompletion, studentReadyStep]);
 
   const updateActiveStudentLessons = (nextLessons: LessonData[]) => {
     if (!activeStudent) return null;
@@ -707,11 +715,16 @@ function WorkspaceApp({ cloud, studentPortalToken = '', initialRoomSession }: { 
 
   const handleGoToStep = (index: number) => {
     if (roomSession?.role === 'student') {
-      showToast('Переходами между заданиями управляет учитель.');
+      if (index > currentStep) {
+        void collaboration.publishAction(`готово-задание:${currentStep}`);
+        setStudentReadyStep(currentStep);
+        showToast('Учителю отправлен сигнал: задание выполнено. Он переключит урок, когда будет готов.');
+      } else showToast('Переходами между заданиями управляет учитель.');
       return;
     }
     const next = Math.max(0, Math.min(index, orderedGames.length - 1));
     if (next !== currentStep) playTransitionSound();
+    if (next !== currentStep) setStudentReadyStep(null);
     setCurrentStep(next);
     if (collaboration.role === 'student') void collaboration.publishStep(next);
   };
@@ -981,6 +994,7 @@ function WorkspaceApp({ cloud, studentPortalToken = '', initialRoomSession }: { 
             {currentGame?.stepKey === 'step16' && <Step16SentencePictureMatch config={activeLesson.step16} onPrev={goPrevious} onNext={goNext} isLastGame={currentStep === orderedGames.length - 1} onCorrectAnswer={handleCorrectAnswer} sharedSeed={collaboration.roomId || undefined} />}
             {currentGame?.stepKey === 'step17' && <Step17WordSearch config={activeLesson.step17} onPrev={goPrevious} onNext={goNext} isLastGame={currentStep === orderedGames.length - 1} onCorrectAnswer={handleCorrectAnswer} />}
           </div>
+          {currentGame && roomSession?.role === 'teacher' && studentReadyStep === currentStep && <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-center"><p className="text-xs font-black text-emerald-800">✓ Ученик выполнил это задание и ждёт вас.</p>{currentStep < orderedGames.length - 1 ? <button onClick={goNext} className="mt-2 inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-xs font-black text-white shadow transition hover:bg-emerald-600">Перейти к следующему заданию →</button> : <button onClick={handleFinishLesson} className="mt-2 inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-xs font-black text-white shadow transition hover:bg-emerald-600">Завершить урок</button>}</div>}
           {currentGame && currentStep < orderedGames.length - 1 && <div className="mt-4 flex justify-center"><button onClick={goNext} className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs font-black text-slate-500 transition hover:border-pink-200 hover:bg-pink-50 hover:text-pink-700">Пропустить задание <span aria-hidden="true">→</span></button></div>}
           {currentGame && currentStep === orderedGames.length - 1 && <div className="mt-4 flex justify-center">{screen === 'preview' ? <button onClick={() => setScreen('builder')} className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-pink-500 to-purple-600 px-6 py-3 text-sm font-black text-white shadow-md transition hover:brightness-105 active:scale-[.98]"><Edit3 className="h-4 w-4" />Вернуться к редактированию</button> : <button onClick={handleFinishLesson} className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-6 py-3 text-sm font-black text-white shadow-md transition hover:brightness-105 active:scale-[.98]"><Award className="h-4 w-4" />Завершить урок</button>}</div>}
           {currentGame && <div className="mt-4 text-[10px] font-bold text-slate-400">{currentStep + 1} из {orderedGames.length} · {currentGame.title}</div>}

@@ -7,6 +7,8 @@ export interface ClassroomViewState {
   currentStep: number;
   score: number;
   showCompletion: boolean;
+  /** The student completed this step and is waiting for the teacher to continue. */
+  studentReadyStep?: number | null;
 }
 
 export interface RoomMember {

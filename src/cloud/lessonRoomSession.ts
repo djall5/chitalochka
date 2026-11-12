@@ -6,6 +6,7 @@ export type RoomLessonView = {
   currentStep: number;
   score: number;
   showCompletion: boolean;
+  studentReadyStep?: number | null;
 };
 
 export type LessonRoomSession = {
@@ -60,7 +61,7 @@ export async function loadLessonRoomSession(roomId: string, token: string): Prom
     roomId: String(data.roomId), token, expiresAt: String(data.expiresAt),
     lesson: data.lesson as LessonData,
     games: Array.isArray(data.games) ? data.games as GameLibraryItem[] : [],
-    view: { currentStep: Number(data.state?.currentStep) || 0, score: Number(data.state?.score) || 0, showCompletion: Boolean(data.state?.showCompletion) },
+    view: { currentStep: Number(data.state?.currentStep) || 0, score: Number(data.state?.score) || 0, showCompletion: Boolean(data.state?.showCompletion), studentReadyStep: Number.isInteger(data.state?.studentReadyStep) ? Number(data.state.studentReadyStep) : null },
     studentName: String(data.studentName || 'Ученик'), studentId: data.studentId || undefined, character: data.character || undefined,
   };
 }
