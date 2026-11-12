@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { BookOpen, Check, ChevronDown, ChevronUp, CopyPlus, Gamepad2, Library, Pencil, Play, Plus, Search, Trash2, Upload, UserRound, WandSparkles, X } from 'lucide-react';
-import { LessonData, LessonStatus, MemoryPair, ReadAndChooseTask, ReadingTextPage, SentencePicturePair, Step13Config, Step14Config, Step15Config, Step16Config } from '../types';
+import { LessonData, LessonStatus, MemoryPair, ReadAndChooseTask, ReadingTextPage, SentencePicturePair, Step13Config, Step14Config, Step15Config, Step16Config, Step17Config, WordSearchWord } from '../types';
 import { cloneLesson, GameLibraryItem, GameStepKey, lessonGameOrder } from '../gameLibrary';
 import { applyLetterToSelectedGames, isRussianLetter } from '../letterLesson';
 import { syllabifyRussian } from '../utils/syllabifyRussian';
@@ -11,6 +11,7 @@ import { ColoringEditor } from './ColoringEditor';
 import { DrawingPagesEditor } from './DrawingPagesEditor';
 import { createReadAndChooseAnswer, createReadAndChooseTask } from '../utils/readAndChoose';
 import { createSentencePicturePair } from '../utils/sentencePictureMatch';
+import { createWordSearchWord, generateWordSearch, placeWordsOnGrid, validateWordSearch } from '../utils/wordSearch';
 import { planningProgressForStudent, StudentRecord } from './StudentProfile';
 
 type Props = {
@@ -180,6 +181,7 @@ export function LessonBuilder({ initialLesson, games, student, isEditing = false
     if (!coloringReady()) { setError('Настройте игру «Прочитай и раскрась»: загрузите рисунок, введите предложения и задайте цвет каждой области.'); return; }
     if (!readAndChooseReady()) { setError('Настройте игру «Прочитай и выбери»: добавьте предложение, от 2 до 6 картинок и отметьте один верный ответ в каждом задании.'); return; }
     if (!sentencePictureMatchReady()) { setError('Настройте игру «Соедини картинку с предложением»: добавьте от 2 до 6 заполненных пар.'); return; }
+    if (!wordSearchReady()) { setError('Настройте игру «Найди слова»: добавьте 2–8 слов и сгенерируйте корректное поле.'); return; }
     if (!movementWarmupReady()) { setError('Загрузите видео для игры «Активная разминка».'); return; }
     onSave(cloneLesson(data), play);
   };
@@ -199,11 +201,16 @@ export function LessonBuilder({ initialLesson, games, student, isEditing = false
     const config = (data.gameInstances?.[game.id]?.config.step16 || data.step16) as Step16Config;
     return config.pairs.length >= 2 && config.pairs.length <= 6 && config.pairs.every(pair => pair.plainText.trim() && pair.imageDataUrl && (config.displayMode !== 'syllables' || pair.syllabifiedText.trim()));
   });
+  const wordSearchReady = () => selectedGames.filter(game => game.stepKey === 'step17').every(game => {
+    const config = (data.gameInstances?.[game.id]?.config.step17 || data.step17) as Step17Config;
+    return !validateWordSearch(config) && config.grid.length === config.rows && config.grid.every(row => row.length === config.columns);
+  });
   const preview = () => {
     if (!data.gameOrder?.length) { setError('Добавьте в урок хотя бы одну игру, чтобы открыть предпросмотр.'); return; }
     if (!coloringReady()) { setError('Сначала настройте игру «Прочитай и раскрась».'); return; }
     if (!readAndChooseReady()) { setError('Сначала настройте игру «Прочитай и выбери».'); return; }
     if (!sentencePictureMatchReady()) { setError('Сначала настройте игру «Соедини картинку с предложением».'); return; }
+    if (!wordSearchReady()) { setError('Сначала настройте игру «Найди слова».'); return; }
     if (!movementWarmupReady()) { setError('Сначала загрузите видео для разминки.'); return; }
     onPreview(cloneLesson(data));
   };
@@ -359,6 +366,42 @@ function SentencePictureMatchEditor({ config, onChange }: { config: Step16Config
   </div>;
 }
 
+function WordSearchEditor({ config, onChange }: { config: Step17Config; onChange: (patch: Partial<Step17Config>) => void }) {
+  const [error, setError] = useState('');
+  const inputClass = 'mt-1 w-full rounded-xl border border-pink-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 outline-none focus:border-pink-500';
+  const regenerate = () => {
+    const result = generateWordSearch(config);
+    if (result.error || !result.grid || !result.words) { setError(result.error || 'Не удалось создать поле.'); return; }
+    onChange({ words: result.words, grid: result.grid }); setError('');
+  };
+  const resize = (key: 'rows' | 'columns', value: number) => {
+    const next = { ...config, [key]: Math.max(5, Math.min(14, value)), grid: [] };
+    onChange({ [key]: next[key], grid: [] });
+  };
+  const updateWord = (id: string, patch: Partial<WordSearchWord>) => onChange({ words: config.words.map(word => word.id === id ? { ...word, ...patch } : word) });
+  const moveWord = (id: string, patch: Partial<WordSearchWord>) => {
+    const words = config.words.map(word => word.id === id ? { ...word, ...patch } : word);
+    const blank = Array.from({ length: config.rows }, () => Array.from({ length: config.columns }, () => ''));
+    const issue = validateWordSearch({ ...config, words, grid: blank });
+    if (issue) { setError(issue); return; }
+    onChange({ words, grid: placeWordsOnGrid({ ...config, words }) }); setError('');
+  };
+  const updateCell = (row: number, column: number, value: string) => {
+    const grid = Array.from({ length: config.rows }, (_, rowIndex) => Array.from({ length: config.columns }, (_, columnIndex) => config.grid[rowIndex]?.[columnIndex] || '').map((cell, cellColumn) => rowIndex === row && cellColumn === column ? value.slice(-1) : cell));
+    onChange({ grid });
+  };
+  const configError = config.grid.length ? validateWordSearch(config) : '';
+  return <div className="space-y-3 rounded-2xl bg-amber-50/70 p-4">
+    <div><h3 className="text-xs font-black text-amber-800">Игра «Найди слова»</h3><p className="mt-1 text-[10px] font-semibold text-slate-500">Слова в поле идут только слева направо или сверху вниз. Ребёнок проведёт по найденному слову мышью или пальцем.</p></div>
+    <div className="grid gap-3 sm:grid-cols-3"><label className="block text-[10px] font-bold text-slate-600">Строки<input type="number" min={5} max={14} className={inputClass} value={config.rows} onChange={event => resize('rows', Number(event.target.value) || 5)} /></label><label className="block text-[10px] font-bold text-slate-600">Столбцы<input type="number" min={5} max={14} className={inputClass} value={config.columns} onChange={event => resize('columns', Number(event.target.value) || 5)} /></label><label className="flex items-end gap-2 pb-2 text-[10px] font-black text-slate-600"><input type="checkbox" checked={config.showWordList} onChange={event => onChange({ showWordList: event.target.checked })} />Показывать список слов</label></div>
+    <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-[10px] font-bold text-slate-600">Слова для поиска · {config.words.length} из 8</span><div className="flex gap-2"><button className={lightButton} onClick={regenerate}>✨ Сгенерировать поле</button><button className={lightButton} disabled={config.words.length >= 8} onClick={() => onChange({ words: [...config.words, createWordSearchWord()] })}><Plus className="h-3.5 w-3.5" />Добавить слово</button></div></div>
+    <div className="space-y-2">{config.words.map((word, index) => <div key={word.id} className="grid gap-2 rounded-xl border border-amber-100 bg-white p-3 sm:grid-cols-[minmax(0,1fr)_92px_72px_72px_auto]"><label className="text-[10px] font-bold text-slate-600">Слово {index + 1}<input className={inputClass} value={word.text} onChange={event => updateWord(word.id, { text: event.target.value })} placeholder="Например, КОТ" /></label><label className="text-[10px] font-bold text-slate-600">Направление<select className={inputClass} value={word.direction} onChange={event => moveWord(word.id, { direction: event.target.value as WordSearchWord['direction'] })}><option value="horizontal">→ Горизонталь</option><option value="vertical">↓ Вертикаль</option></select></label><label className="text-[10px] font-bold text-slate-600">Строка<input type="number" min={1} max={config.rows} className={inputClass} value={word.row + 1} onChange={event => moveWord(word.id, { row: Math.max(0, Number(event.target.value) - 1) })} /></label><label className="text-[10px] font-bold text-slate-600">Столбец<input type="number" min={1} max={config.columns} className={inputClass} value={word.column + 1} onChange={event => moveWord(word.id, { column: Math.max(0, Number(event.target.value) - 1) })} /></label><button className="self-end rounded-lg bg-rose-50 p-2 text-rose-500 disabled:opacity-30" disabled={config.words.length <= 2} title="Удалить слово" onClick={() => onChange({ words: config.words.filter(item => item.id !== word.id), grid: [] })}><Trash2 className="h-4 w-4" /></button></div>)}</div>
+    {config.grid.length === config.rows && <details className="rounded-xl border border-amber-200 bg-white p-3"><summary className="cursor-pointer text-[10px] font-black text-amber-800">✏️ Изменить отдельные буквы в поле</summary><p className="mt-1 text-[10px] font-semibold text-slate-500">Не меняйте буквы самих слов: редактор предупредит, если слово сломано.</p><div className="mt-3 grid gap-1" style={{ gridTemplateColumns: `repeat(${config.columns}, minmax(0, 1fr))` }}>{Array.from({ length: config.rows }, (_, row) => Array.from({ length: config.columns }, (_, column) => <input key={`${row}-${column}`} maxLength={1} value={config.grid[row]?.[column] || ''} onChange={event => updateCell(row, column, event.target.value)} className="aspect-square min-w-0 rounded border border-amber-100 bg-amber-50 text-center text-xs font-black outline-none focus:border-pink-500" aria-label={`Буква ${row + 1}, ${column + 1}`} />))}</div></details>}
+    {(error || configError) && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-xs font-bold text-rose-600">{error || configError}</p>}
+    {!config.grid.length && <p className="rounded-xl bg-white p-3 text-xs font-semibold text-slate-500">Введите слова и нажмите «Сгенерировать поле».</p>}
+  </div>;
+}
+
 function GameContentEditor({ game, lesson, onChange, onSave, onCancel }: GameContentEditorProps) {
   const [imageError, setImageError] = useState('');
   const [activeTextPageId, setActiveTextPageId] = useState(() => lesson.step7.pages[0]?.id || '');
@@ -473,6 +516,8 @@ function GameContentEditor({ game, lesson, onChange, onSave, onCancel }: GameCon
         ? <div className="w-full max-w-sm rounded-2xl border-2 border-pink-200 bg-slate-950 p-2">{lesson.step15.videoDataUrl ? <video src={lesson.step15.videoDataUrl} controls className="w-full rounded-xl" /> : <p className="rounded-xl bg-slate-900 p-8 text-center text-xs font-bold text-white/70">Загрузите видео для разминки</p>}</div>
         : stepKey === 'step16'
           ? <div className="grid w-full max-w-sm grid-cols-2 gap-3"><div className="space-y-2">{lesson.step16.pairs.slice(0, 3).map((pair, index) => <p key={pair.id} className="rounded-xl border border-sky-200 bg-white p-2 text-xs font-black">{index + 1}. {lesson.step16.displayMode === 'syllables' ? pair.syllabifiedText || pair.plainText : pair.plainText || 'Предложение'}</p>)}</div><div className="space-y-2">{lesson.step16.pairs.slice(0, 3).map((pair, index) => <div key={pair.id} className="h-14 rounded-xl border border-sky-200 bg-white p-1">{pair.imageDataUrl ? <img src={pair.imageDataUrl} alt={`Картинка ${index + 1}`} className="h-full w-full object-contain" /> : <span className="flex h-full items-center justify-center text-[9px] font-bold text-slate-400">Картинка</span>}</div>)}</div></div>
+          : stepKey === 'step17'
+            ? <div className="w-full max-w-xs rounded-2xl border border-amber-200 bg-amber-50 p-2"><div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${lesson.step17.columns}, minmax(0, 1fr))` }}>{lesson.step17.grid.length ? lesson.step17.grid.flatMap((row, rowIndex) => row.map((letter, columnIndex) => <span key={`${rowIndex}-${columnIndex}`} className="flex aspect-square items-center justify-center rounded bg-white text-[10px] font-black text-slate-700">{letter}</span>)) : <span className="col-span-full p-5 text-center text-xs font-bold text-slate-400">Сгенерируйте поле</span>}</div></div>
     : stepKey === 'step3'
     ? <div className="grid max-w-xs gap-1.5" style={{ gridTemplateColumns: `repeat(${lesson.step3.gridCols}, minmax(0, 1fr))` }}>{lesson.step3.cells.flatMap((row, rowIndex) => row.map((letter, columnIndex) => <span key={`${rowIndex}-${columnIndex}`} className="flex aspect-square items-center justify-center rounded-lg border border-pink-200 bg-white text-xs font-black text-pink-700">{letter}</span>))}</div>
     : stepKey === 'step8'
@@ -586,10 +631,11 @@ function GameContentEditor({ game, lesson, onChange, onSave, onCancel }: GameCon
         {stepKey === 'step14' && <ReadAndChooseEditor config={lesson.step14} onChange={updateConfig} />}
         {stepKey === 'step15' && <div className="space-y-3 rounded-2xl bg-emerald-50/70 p-4"><div><h3 className="text-xs font-black text-emerald-800">Видео для активной разминки</h3><p className="mt-1 text-[10px] font-semibold text-slate-500">Ребёнок посмотрит ролик прямо в уроке и нажмёт «Я готов!», когда повторит движения. Для сохранения между устройствами используйте MP4 или WebM до 8 МБ.</p></div><label className={`${lightButton} w-fit cursor-pointer`}><Upload className="h-3.5 w-3.5" />{lesson.step15.videoDataUrl ? 'Заменить видео' : 'Загрузить видео'}<input type="file" accept="video/mp4,video/webm" className="hidden" onChange={event => { handleWarmupVideoUpload(event.target.files?.[0]); event.currentTarget.value = ''; }} /></label>{lesson.step15.videoDataUrl && <div className="space-y-2 rounded-xl bg-white p-3"><video src={lesson.step15.videoDataUrl} controls className="max-h-56 w-full rounded-lg bg-black" /><div className="flex items-center justify-between gap-2"><span className="truncate text-[10px] font-bold text-slate-500">{lesson.step15.videoName || 'Видео загружено'}</span><button className="rounded-lg bg-rose-50 px-2 py-1.5 text-[10px] font-black text-rose-600" onClick={() => updateConfig({ videoDataUrl: '', videoName: '' })}>Убрать видео</button></div></div>}</div>}
         {stepKey === 'step16' && <SentencePictureMatchEditor config={lesson.step16} onChange={updateConfig} />}
+        {stepKey === 'step17' && <WordSearchEditor config={lesson.step17} onChange={updateConfig} />}
         {(stepKey === 'step13' || stepKey === 'step14' || stepKey === 'step15' || stepKey === 'step16') && imageError && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-xs font-bold text-rose-600">{imageError}</p>}
         <details className="rounded-2xl border border-pink-200 bg-gradient-to-br from-pink-50 to-violet-50 p-4"><summary className="cursor-pointer text-xs font-black text-pink-700">👀 Предпросмотр для ученика</summary><div className="mt-3 flex flex-col items-center gap-3"><h3 className="text-center text-base font-black text-pink-600">{lesson[stepKey].title}</h3>{preview}</div></details>
       </div>
-      <footer className="flex justify-end gap-2 border-t border-pink-100 bg-slate-50 p-4"><button className={lightButton} onClick={onCancel}>Отмена</button><button className={pinkButton} onClick={() => { if (stepKey === 'step13' && (!lesson.step13.imageDataUrl || !lesson.step13.regionMapDataUrl || !lesson.step13.sentences.some(sentence => sentence.trim()) || !lesson.step13.regions.some(region => region.enabled) || lesson.step13.regions.some(region => region.enabled && !region.targetColor))) { setImageError('Добавьте картинку и текст, затем задайте правильный цвет каждой включённой области.'); return; } if (stepKey === 'step14' && (!lesson.step14.tasks.length || lesson.step14.tasks.some(task => !task.plainText.trim() || (task.displayMode === 'syllables' && !task.syllabifiedText.trim()) || task.answers.length < 2 || task.answers.length > 6 || task.answers.some(answer => !answer.imageDataUrl) || task.answers.filter(answer => answer.isCorrect).length !== 1))) { setImageError('Заполните предложение, добавьте 2–6 картинок и отметьте один правильный ответ в каждом задании.'); return; } if (stepKey === 'step15' && !lesson.step15.videoDataUrl) { setImageError('Загрузите видео для активной разминки.'); return; } if (stepKey === 'step16' && (lesson.step16.pairs.length < 2 || lesson.step16.pairs.length > 6 || lesson.step16.pairs.some(pair => !pair.plainText.trim() || !pair.imageDataUrl || (lesson.step16.displayMode === 'syllables' && !pair.syllabifiedText.trim())))) { setImageError('Добавьте от 2 до 6 пар: в каждой нужны предложение и картинка. Для режима по слогам заполните слоговый вариант.'); return; } onSave(); }}><Check className="h-4 w-4" />Сохранить в урок</button></footer>
+      <footer className="flex justify-end gap-2 border-t border-pink-100 bg-slate-50 p-4"><button className={lightButton} onClick={onCancel}>Отмена</button><button className={pinkButton} onClick={() => { if (stepKey === 'step13' && (!lesson.step13.imageDataUrl || !lesson.step13.regionMapDataUrl || !lesson.step13.sentences.some(sentence => sentence.trim()) || !lesson.step13.regions.some(region => region.enabled) || lesson.step13.regions.some(region => region.enabled && !region.targetColor))) { setImageError('Добавьте картинку и текст, затем задайте правильный цвет каждой включённой области.'); return; } if (stepKey === 'step14' && (!lesson.step14.tasks.length || lesson.step14.tasks.some(task => !task.plainText.trim() || (task.displayMode === 'syllables' && !task.syllabifiedText.trim()) || task.answers.length < 2 || task.answers.length > 6 || task.answers.some(answer => !answer.imageDataUrl) || task.answers.filter(answer => answer.isCorrect).length !== 1))) { setImageError('Заполните предложение, добавьте 2–6 картинок и отметьте один правильный ответ в каждом задании.'); return; } if (stepKey === 'step15' && !lesson.step15.videoDataUrl) { setImageError('Загрузите видео для активной разминки.'); return; } if (stepKey === 'step16' && (lesson.step16.pairs.length < 2 || lesson.step16.pairs.length > 6 || lesson.step16.pairs.some(pair => !pair.plainText.trim() || !pair.imageDataUrl || (lesson.step16.displayMode === 'syllables' && !pair.syllabifiedText.trim())))) { setImageError('Добавьте от 2 до 6 пар: в каждой нужны предложение и картинка. Для режима по слогам заполните слоговый вариант.'); return; } if (stepKey === 'step17' && (lesson.step17.grid.length !== lesson.step17.rows || lesson.step17.grid.some(row => row.length !== lesson.step17.columns) || validateWordSearch(lesson.step17))) { setImageError(validateWordSearch(lesson.step17) || 'Сгенерируйте поле нужного размера.'); return; } onSave(); }}><Check className="h-4 w-4" />Сохранить в урок</button></footer>
     </section>
   </div>;
 }

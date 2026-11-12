@@ -4,6 +4,7 @@ import { defaultColoringStep } from './utils/coloringImage';
 import { defaultReadAndChooseStep } from './utils/readAndChoose';
 import { defaultMovementWarmup } from './utils/movementWarmup';
 import { defaultSentencePictureMatch } from './utils/sentencePictureMatch';
+import { defaultWordSearch } from './utils/wordSearch';
 
 export const defaultLessonY: LessonData = {
   id: 'lesson-y',
@@ -110,6 +111,7 @@ export const defaultLessonY: LessonData = {
   step14: defaultReadAndChooseStep(),
   step15: defaultMovementWarmup(),
   step16: defaultSentencePictureMatch(),
+  step17: defaultWordSearch(),
 };
 
 export const defaultLessonS: LessonData = {
@@ -207,6 +209,7 @@ export const defaultLessonS: LessonData = {
   step14: defaultReadAndChooseStep(),
   step15: defaultMovementWarmup(),
   step16: defaultSentencePictureMatch(),
+  step17: defaultWordSearch(),
 };
 
 export const PRESET_LESSONS = [defaultLessonY, defaultLessonS];

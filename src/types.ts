@@ -205,6 +205,26 @@ export interface Step16Config {
   pairs: SentencePicturePair[];
 }
 
+export type WordSearchDirection = 'horizontal' | 'vertical';
+
+export interface WordSearchWord {
+  id: string;
+  text: string;
+  row: number;
+  column: number;
+  direction: WordSearchDirection;
+}
+
+export interface Step17Config {
+  title: string;
+  instruction: string;
+  rows: number;
+  columns: number;
+  showWordList: boolean;
+  words: WordSearchWord[];
+  grid: string[][];
+}
+
 export interface ReadingTextPage {
   id: string;
   imageDataUrl: string;
@@ -249,6 +269,7 @@ export interface LessonData {
   step14: Step14Config;
   step15: Step15Config;
   step16: Step16Config;
+  step17: Step17Config;
 }
 
 export type LessonStatus = 'in-progress' | 'completed' | 'repeat';

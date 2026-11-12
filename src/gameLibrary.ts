@@ -4,8 +4,9 @@ import { defaultColoringStep } from './utils/coloringImage';
 import { defaultReadAndChooseStep } from './utils/readAndChoose';
 import { defaultMovementWarmup } from './utils/movementWarmup';
 import { defaultSentencePictureMatch } from './utils/sentencePictureMatch';
+import { defaultWordSearch } from './utils/wordSearch';
 
-export type GameStepKey = 'step1' | 'step2' | 'step3' | 'step4' | 'step5' | 'step6' | 'step7' | 'step8' | 'step9' | 'step10' | 'step11' | 'step12' | 'step13' | 'step14' | 'step15' | 'step16';
+export type GameStepKey = 'step1' | 'step2' | 'step3' | 'step4' | 'step5' | 'step6' | 'step7' | 'step8' | 'step9' | 'step10' | 'step11' | 'step12' | 'step13' | 'step14' | 'step15' | 'step16' | 'step17';
 
 export interface GameLibraryItem {
   id: string;
@@ -34,12 +35,13 @@ export const DEFAULT_GAME_LIBRARY: GameLibraryItem[] = [
   { id: 'read-and-choose', title: 'Прочитай и выбери', emoji: '🖼️', category: 'Чтение', description: 'Прочитай предложение и выбери подходящую картинку.', stepKey: 'step14' },
   { id: 'movement-warmup', title: 'Активная разминка', emoji: '🤸', category: 'Разминка', description: 'Посмотри ролик и повтори движения перед уроком.', stepKey: 'step15' },
   { id: 'sentence-picture-match', title: 'Соедини картинку с предложением', emoji: '🔗', category: 'Чтение', description: 'Прочитай предложения и соедини их с подходящими картинками.', stepKey: 'step16' },
+  { id: 'word-search', title: 'Найди слова', emoji: '🔎', category: 'Чтение', description: 'Найди слова по горизонтали и вертикали среди букв.', stepKey: 'step17' },
 ];
 
 export const gameStepIndex = (key: GameStepKey) => Number(key.slice(4)) - 1;
 
 export const lessonGameOrder = (lesson: LessonData) =>
-  lesson.gameOrder?.length ? lesson.gameOrder : DEFAULT_GAME_LIBRARY.filter(game => !['step7', 'step8', 'step9', 'step10', 'step11', 'step12', 'step13', 'step14', 'step15', 'step16'].includes(game.stepKey)).map(game => game.id);
+  lesson.gameOrder?.length ? lesson.gameOrder : DEFAULT_GAME_LIBRARY.filter(game => !['step7', 'step8', 'step9', 'step10', 'step11', 'step12', 'step13', 'step14', 'step15', 'step16', 'step17'].includes(game.stepKey)).map(game => game.id);
 
 export const cloneLesson = (lesson: LessonData): LessonData => {
   const copy = JSON.parse(JSON.stringify(lesson)) as LessonData;
@@ -53,6 +55,7 @@ export const cloneLesson = (lesson: LessonData): LessonData => {
   if (!copy.step14) copy.step14 = defaultReadAndChooseStep();
   if (!copy.step15) copy.step15 = defaultMovementWarmup();
   if (!copy.step16) copy.step16 = defaultSentencePictureMatch();
+  if (!copy.step17) copy.step17 = defaultWordSearch();
   if (!copy.step6) copy.step6 = { title: '📖 Читаем слова!', instruction: 'Нажимайте на карточки со словами и читайте их вслух!', cards: [] };
   if (!Number.isFinite(copy.step10.targetCount)) copy.step10.targetCount = 16;
   if (!Array.isArray(copy.step11.syllables)) copy.step11.syllables = [];
@@ -81,6 +84,13 @@ export const cloneLesson = (lesson: LessonData): LessonData => {
     syllabifiedText: pair.syllabifiedText || '',
     imageDataUrl: pair.imageDataUrl || '',
   }));
+  copy.step17.rows = Math.max(5, Math.min(14, Number(copy.step17.rows) || 8));
+  copy.step17.columns = Math.max(5, Math.min(14, Number(copy.step17.columns) || 8));
+  copy.step17.showWordList = copy.step17.showWordList !== false;
+  if (!Array.isArray(copy.step17.words)) copy.step17.words = [];
+  copy.step17.words = copy.step17.words.slice(0, 8).map((word, index) => ({ id: word.id || `word-search-${index + 1}`, text: word.text || '', row: Math.max(0, Number(word.row) || 0), column: Math.max(0, Number(word.column) || 0), direction: word.direction === 'vertical' ? 'vertical' : 'horizontal' }));
+  if (!Array.isArray(copy.step17.grid)) copy.step17.grid = [];
+  copy.step17.grid = copy.step17.grid.slice(0, copy.step17.rows).map(row => Array.isArray(row) ? row.slice(0, copy.step17.columns).map(cell => typeof cell === 'string' ? cell : '') : []);
   const legacyCards = copy.step6.cards as Array<ReadingCardItem & { showSyllables?: boolean }>;
   if (!copy.step6.displayMode) {
     copy.step6.displayMode = legacyCards.some(card => card.showSyllables || /[-‑]/.test(card.displayWord || '')) ? 'syllables' : 'whole';
