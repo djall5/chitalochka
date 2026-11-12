@@ -1,11 +1,12 @@
-import { PointerEvent as ReactPointerEvent, useMemo, useRef, useState } from 'react';
+import { PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Check, RotateCcw, Sparkles } from 'lucide-react';
 import { Step10Config } from '../../types';
 import { createSeededRandom } from '../../utils/seededRandom';
 
 type LetterTile = { id: string; letter: string; x: number; y: number; rotation: number };
 type DragState = { id: string; pointerId: number; startX: number; startY: number; tileX: number; tileY: number; width: number; height: number; moved: boolean };
-type Props = { config: Step10Config; onPrev: () => void; onNext: () => void; isLastGame: boolean; onCorrectAnswer?: (answerId: string, points?: number) => void; sharedSeed?: string };
+export type FillJarSharedState = { placedIds: string[]; selectedId: string | null; movedPositions: Record<string, { x: number; y: number }>; shuffleSeed: number };
+type Props = { config: Step10Config; onPrev: () => void; onNext: () => void; isLastGame: boolean; onCorrectAnswer?: (answerId: string, points?: number) => void; sharedSeed?: string; sharedState?: FillJarSharedState; onStateChange?: (state: FillJarSharedState, throttle?: boolean) => void };
 const RUSSIAN_ALPHABET = [...'АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ'];
 
 function generateLetterScatter(targets: string[], count: number, seed: string): LetterTile[] {
@@ -35,7 +36,7 @@ function generateLetterScatter(targets: string[], count: number, seed: string): 
   return tiles;
 }
 
-export function Step10FillJar({ config, onPrev, onNext, isLastGame, onCorrectAnswer, sharedSeed }: Props) {
+export function Step10FillJar({ config, onPrev, onNext, isLastGame, onCorrectAnswer, sharedSeed, sharedState, onStateChange }: Props) {
   const targetLetters = (config.targetLetters?.length ? config.targetLetters : [config.targetLetter || 'А']).map(letter => [...letter.toLocaleUpperCase('ru-RU')][0]).filter(Boolean);
   const targetLetter = targetLetters[0] || 'А';
   const targetCount = Math.max(2, Math.min(30, Math.floor(config.targetCount || 16)));
@@ -52,6 +53,14 @@ export function Step10FillJar({ config, onPrev, onNext, isLastGame, onCorrectAns
   const tiles = useMemo(() => generateLetterScatter(targetLetters, targetCount, `${sharedSeed || crypto.randomUUID()}:${shuffleSeed}:${targetLetters.join('')}:${targetCount}`), [targetLetters.join(''), targetCount, shuffleSeed, sharedSeed]);
   const placedLetters = placedIds.map(id => tiles.find(tile => tile.id === id)?.letter || '');
   const completed = placedIds.length === targetCount;
+  const emitState = (next: Partial<FillJarSharedState>, throttle = false) => onStateChange?.({ placedIds, selectedId, movedPositions, shuffleSeed, ...next }, throttle);
+  useEffect(() => {
+    if (!sharedState) return;
+    setPlacedIds(sharedState.placedIds || []);
+    setSelectedId(sharedState.selectedId || null);
+    setMovedPositions(sharedState.movedPositions || {});
+    setShuffleSeed(sharedState.shuffleSeed || 0);
+  }, [sharedState]);
   const remainingTiles = tiles.map((tile, index) => ({ tile, index })).filter(({ tile }) => !placedIds.includes(tile.id));
   const putInJar = (tileId: string | null) => {
     if (!tileId || completed || placedIds.includes(tileId)) return;
@@ -63,8 +72,10 @@ export function Step10FillJar({ config, onPrev, onNext, isLastGame, onCorrectAns
       return;
     }
     const answerNumber = placedIds.length + 1;
-    setPlacedIds(previous => [...previous, tile.id]);
+    const nextPlaced = [...placedIds, tile.id];
+    setPlacedIds(nextPlaced);
     setSelectedId(null);
+    emitState({ placedIds: nextPlaced, selectedId: null });
     setMessage('Верно! Буква в банке.');
     onCorrectAnswer?.(`jar-${targetLetters.join('')}-${answerNumber}`);
   };
@@ -99,7 +110,9 @@ export function Step10FillJar({ config, onPrev, onNext, isLastGame, onCorrectAns
     const tileSize = window.innerWidth >= 640 ? 44 : 40;
     const x = Math.max(0, Math.min(drag.width - tileSize, drag.tileX + deltaX));
     const y = Math.max(0, Math.min(drag.height - tileSize, drag.tileY + deltaY));
-    setMovedPositions(previous => ({ ...previous, [drag.id]: { x: (x / drag.width) * 100, y: (y / drag.height) * 100 } }));
+    const nextPositions = { ...movedPositions, [drag.id]: { x: (x / drag.width) * 100, y: (y / drag.height) * 100 } };
+    setMovedPositions(nextPositions);
+    emitState({ movedPositions: nextPositions }, true);
   };
 
   const endDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -109,6 +122,7 @@ export function Step10FillJar({ config, onPrev, onNext, isLastGame, onCorrectAns
       suppressClickRef.current = drag.id;
       const jarBounds = jarRef.current?.getBoundingClientRect();
       if (jarBounds && event.clientX >= jarBounds.left && event.clientX <= jarBounds.right && event.clientY >= jarBounds.top && event.clientY <= jarBounds.bottom) putInJar(drag.id);
+      else emitState({}, false);
       window.setTimeout(() => { suppressClickRef.current = null; }, 0);
     }
     dragRef.current = null;
@@ -118,7 +132,7 @@ export function Step10FillJar({ config, onPrev, onNext, isLastGame, onCorrectAns
   const renderTiles = () => <>
     {remainingTiles.map(({ tile }) => {
       const position = movedPositions[tile.id] || tile;
-      return <button key={tile.id} type="button" onPointerDown={event => startDrag(event, tile)} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} onClick={() => { if (suppressClickRef.current === tile.id) { suppressClickRef.current = null; return; } setSelectedId(tile.id === selectedId ? null : tile.id); setMessage(`Найди: ${targetLetters.join(', ')} и перетащи в банку.`); }} aria-label={`Буква ${tile.letter}`} style={{ left: `${position.x}%`, top: `${position.y}%`, transform: `rotate(${tile.rotation}deg)` }} className={`absolute grid h-10 w-10 touch-none select-none place-items-center rounded-xl border-[3px] bg-white text-base font-black shadow-md transition hover:-translate-y-0.5 active:scale-95 sm:h-11 sm:w-11 ${draggingId === tile.id ? 'z-30 cursor-grabbing shadow-xl' : 'z-10 cursor-grab'} ${selectedId === tile.id ? 'border-violet-500 text-violet-700 ring-2 ring-violet-200' : 'border-pink-400 text-pink-600 hover:border-pink-600'}`}>{tile.letter}</button>;
+      return <button key={tile.id} type="button" onPointerDown={event => startDrag(event, tile)} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} onClick={() => { if (suppressClickRef.current === tile.id) { suppressClickRef.current = null; return; } const nextSelected = tile.id === selectedId ? null : tile.id; setSelectedId(nextSelected); emitState({ selectedId: nextSelected }); setMessage(`Найди: ${targetLetters.join(', ')} и перетащи в банку.`); }} aria-label={`Буква ${tile.letter}`} style={{ left: `${position.x}%`, top: `${position.y}%`, transform: `rotate(${tile.rotation}deg)` }} className={`absolute grid h-10 w-10 touch-none select-none place-items-center rounded-xl border-[3px] bg-white text-base font-black shadow-md transition hover:-translate-y-0.5 active:scale-95 sm:h-11 sm:w-11 ${draggingId === tile.id ? 'z-30 cursor-grabbing shadow-xl' : 'z-10 cursor-grab'} ${selectedId === tile.id ? 'border-violet-500 text-violet-700 ring-2 ring-violet-200' : 'border-pink-400 text-pink-600 hover:border-pink-600'}`}>{tile.letter}</button>;
     })}
   </>;
 
@@ -138,6 +152,6 @@ export function Step10FillJar({ config, onPrev, onNext, isLastGame, onCorrectAns
     <div aria-live="polite" className={`mt-3 min-h-6 text-xs font-black ${message.startsWith('Верно') ? 'text-emerald-600' : message.startsWith('Это') ? 'text-rose-600' : 'text-violet-700'}`}>{completed ? 'Банка заполнена! Ты нашёл все нужные буквы!' : message}</div>
     {completed && <div className="mt-2 inline-flex items-center gap-2 rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-700"><Sparkles className="h-5 w-5" />Отличная работа!</div>}
     {completed && !isLastGame && <button onClick={onNext} className="mt-3 inline-flex items-center gap-2 rounded-xl bg-pink-500 px-5 py-2.5 text-xs font-black text-white shadow">Дальше по уроку <Check className="h-4 w-4" /></button>}
-    <div className="mt-4 flex w-full items-center justify-between gap-2"><button onClick={onPrev} className="inline-flex items-center gap-1 rounded-xl bg-slate-100 px-3 py-2 text-xs font-black text-slate-600"><ArrowLeft className="h-4 w-4" />Назад к игре</button><button onClick={() => { setPlacedIds([]); setSelectedId(null); setMovedPositions({}); setMessage(''); setShuffleSeed(value => value + 1); }} className="inline-flex items-center gap-1 rounded-xl bg-violet-50 px-3 py-2 text-xs font-black text-violet-700"><RotateCcw className="h-3.5 w-3.5" />Заново</button></div>
+    <div className="mt-4 flex w-full items-center justify-between gap-2"><button onClick={onPrev} className="inline-flex items-center gap-1 rounded-xl bg-slate-100 px-3 py-2 text-xs font-black text-slate-600"><ArrowLeft className="h-4 w-4" />Назад к игре</button><button onClick={() => { const nextSeed = shuffleSeed + 1; setPlacedIds([]); setSelectedId(null); setMovedPositions({}); setMessage(''); setShuffleSeed(nextSeed); emitState({ placedIds: [], selectedId: null, movedPositions: {}, shuffleSeed: nextSeed }); }} className="inline-flex items-center gap-1 rounded-xl bg-violet-50 px-3 py-2 text-xs font-black text-violet-700"><RotateCcw className="h-3.5 w-3.5" />Заново</button></div>
   </div>;
 }

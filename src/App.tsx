@@ -5,13 +5,13 @@ import { defaultLessonY } from './defaultLessons';
 import { Step1Coloring } from './components/steps/Step1Coloring';
 import { Step2Falling } from './components/steps/Step2Falling';
 import { Step3Maze } from './components/steps/Step3Maze';
-import { Step4Drawing } from './components/steps/Step4Drawing';
+import { DrawingSyncEvent, Step4Drawing } from './components/steps/Step4Drawing';
 import { Step5WordFill } from './components/steps/Step5WordFill';
 import { Step6ReadingCards } from './components/steps/Step6ReadingCards';
 import { Step7TextReading } from './components/steps/Step7TextReading';
 import { Step8BuildHouse } from './components/steps/Step8BuildHouse';
 import { Step9Memory } from './components/steps/Step9Memory';
-import { Step10FillJar } from './components/steps/Step10FillJar';
+import { FillJarSharedState, Step10FillJar } from './components/steps/Step10FillJar';
 import { Step11SpeedSyllables } from './components/steps/Step11SpeedSyllables';
 import { Step12RocketSyllables } from './components/steps/Step12RocketSyllables';
 import { Step13ReadAndColor } from './components/steps/Step13ReadAndColor';
@@ -217,6 +217,7 @@ function WorkspaceApp({ cloud, studentPortalToken = '', initialRoomSession }: { 
   const [roomStudentName, setRoomStudentName] = useState(initialRoomSession?.studentName || '');
   const [roomCharacter, setRoomCharacter] = useState<StudentRecord['character']>(initialRoomSession?.character as StudentRecord['character']);
   const [studentReadyStep, setStudentReadyStep] = useState<number | null>(initialRoomSession?.view.studentReadyStep ?? null);
+  const [sharedGameStates, setSharedGameStates] = useState<Record<string, unknown>>({});
   const lessonSurfaceRef = useRef<HTMLDivElement>(null);
   const activePointerId = useRef<number | null>(null);
   const cloudSnapshotRef = useRef<WorkspaceSnapshot | null>(null);
@@ -267,6 +268,8 @@ function WorkspaceApp({ cloud, studentPortalToken = '', initialRoomSession }: { 
       const fallbackControl = Number.isInteger(interaction.controlIndex) ? controls[interaction.controlIndex!] : null;
       const target = fallbackControl || findElementAtPath(surface, interaction.path);
       if (!(target instanceof HTMLElement)) return;
+      if (interaction.role === 'student' && currentGame?.stepKey === 'step10') return;
+      if (interaction.role === 'student' && currentGame?.stepKey === 'step4' && target instanceof HTMLCanvasElement) return;
       const control = target.closest<HTMLElement>('button,[role="button"]') || target;
       if (collaboration.role === 'teacher' && interaction.role === 'student' && /^(дальше|пропустить|завершить|следующее)/i.test(control.textContent?.trim() || '')) return;
       const bounds = surface.getBoundingClientRect();
@@ -283,6 +286,10 @@ function WorkspaceApp({ cloud, studentPortalToken = '', initialRoomSession }: { 
       const mouseType = interaction.type === 'pointerdown' ? 'mousedown' : interaction.type === 'pointermove' ? 'mousemove' : 'mouseup';
       control.dispatchEvent(new MouseEvent(mouseType, { bubbles: true, cancelable: true, clientX, clientY, button: interaction.button, buttons }));
       if (isUp) control.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX, clientY, button: interaction.button }));
+    },
+    onGameState: update => {
+      if (update.step !== currentStep) return;
+      setSharedGameStates(previous => ({ ...previous, [`${update.step}:${update.game}`]: update.state }));
     },
   });
 
@@ -986,13 +993,13 @@ function WorkspaceApp({ cloud, studentPortalToken = '', initialRoomSession }: { 
             {currentGame?.stepKey === 'step1' && <Step1Coloring config={activeLesson.step1} onNext={goNext} onCorrectAnswer={(id, count) => handleCorrectAnswer(id, (count || 1) * 10)} onEditStep={() => handleOpenStepInEditor(currentStep)} />}
             {currentGame?.stepKey === 'step2' && <Step2Falling config={activeLesson.step2} onPrev={goPrevious} onNext={goNext} onCorrectAnswer={handleCorrectAnswer} sharedSeed={collaboration.roomId || undefined} />}
             {currentGame?.stepKey === 'step3' && <Step3Maze config={activeLesson.step3} onPrev={goPrevious} onNext={goNext} onCorrectAnswer={handleCorrectAnswer} />}
-            {currentGame?.stepKey === 'step4' && <Step4Drawing config={activeLesson.step4} onPrev={goPrevious} onNext={goNext} />}
+            {currentGame?.stepKey === 'step4' && <Step4Drawing config={activeLesson.step4} onPrev={goPrevious} onNext={goNext} remoteEvent={sharedGameStates[`${currentStep}:drawing`] as DrawingSyncEvent | undefined} onDrawingEvent={event => collaboration.publishGameState(currentStep, 'drawing', event)} />}
             {currentGame?.stepKey === 'step5' && <Step5WordFill config={activeLesson.step5} onPrev={goPrevious} onNext={goNext} onCorrectAnswer={handleCorrectAnswer} />}
             {currentGame?.stepKey === 'step6' && <Step6ReadingCards config={activeLesson.step6} onPrev={goPrevious} onNext={goNext} onCorrectAnswer={handleCorrectAnswer} />}
             {currentGame?.stepKey === 'step7' && <Step7TextReading config={activeLesson.step7} onPrev={goPrevious} onNext={goNext} onCorrectAnswer={handleCorrectAnswer} />}
             {currentGame?.stepKey === 'step8' && <Step8BuildHouse config={activeLesson.step8} onPrev={goPrevious} onNext={goNext} isLastGame={currentStep === orderedGames.length - 1} onCorrectAnswer={handleCorrectAnswer} />}
             {currentGame?.stepKey === 'step9' && <Step9Memory config={activeLesson.step9} onPrev={goPrevious} onNext={goNext} isLastGame={currentStep === orderedGames.length - 1} onCorrectAnswer={handleCorrectAnswer} sharedSeed={collaboration.roomId || undefined} />}
-            {currentGame?.stepKey === 'step10' && <Step10FillJar config={activeLesson.step10} onPrev={goPrevious} onNext={goNext} isLastGame={currentStep === orderedGames.length - 1} onCorrectAnswer={handleCorrectAnswer} sharedSeed={collaboration.roomId || undefined} />}
+            {currentGame?.stepKey === 'step10' && <Step10FillJar config={activeLesson.step10} onPrev={goPrevious} onNext={goNext} isLastGame={currentStep === orderedGames.length - 1} onCorrectAnswer={handleCorrectAnswer} sharedSeed={collaboration.roomId || undefined} sharedState={sharedGameStates[`${currentStep}:fill-jar`] as FillJarSharedState | undefined} onStateChange={(state, throttle) => collaboration.publishGameState(currentStep, 'fill-jar', state, throttle)} />}
             {currentGame?.stepKey === 'step11' && <Step11SpeedSyllables config={activeLesson.step11} onPrev={goPrevious} onNext={goNext} isLastGame={currentStep === orderedGames.length - 1} onCorrectAnswer={handleCorrectAnswer} />}
             {currentGame?.stepKey === 'step12' && <Step12RocketSyllables config={activeLesson.step12} onPrev={goPrevious} onNext={goNext} isLastGame={currentStep === orderedGames.length - 1} onCorrectAnswer={handleCorrectAnswer} />}
             {currentGame?.stepKey === 'step13' && <Step13ReadAndColor config={activeLesson.step13} onPrev={goPrevious} onNext={goNext} onCorrectAnswer={handleCorrectAnswer} />}

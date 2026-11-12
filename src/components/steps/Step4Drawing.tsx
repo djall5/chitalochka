@@ -3,13 +3,17 @@ import { Step4Config } from '../../types';
 import { playChime } from '../../utils/phonetics';
 import { RotateCcw, Sparkles, ArrowRight, ArrowLeft, Eraser } from 'lucide-react';
 
+export type DrawingSyncEvent = { id: string; pageIndex: number; clear?: boolean; from?: { x: number; y: number }; to?: { x: number; y: number }; color?: string; isEraser?: boolean; lineWidth?: number };
+
 interface Props {
   config: Step4Config;
   onNext: () => void;
   onPrev: () => void;
+  remoteEvent?: DrawingSyncEvent | null;
+  onDrawingEvent?: (event: DrawingSyncEvent) => void;
 }
 
-export const Step4Drawing: React.FC<Props> = ({ config, onNext, onPrev }) => {
+export const Step4Drawing: React.FC<Props> = ({ config, onNext, onPrev, remoteEvent, onDrawingEvent }) => {
   const canvasRefs = useRef<(HTMLCanvasElement | null)[]>([]);
   const [pageIndex, setPageIndex] = useState(0);
   const pages = (config.drawingPages?.length ? config.drawingPages : [{}]).slice(0, 3);
@@ -21,8 +25,29 @@ export const Step4Drawing: React.FC<Props> = ({ config, onNext, onPrev }) => {
   const [canvasBg, setCanvasBg] = useState(config.canvasBg || '#334155');
 
   const drawingPageRef = useRef<number | null>(null);
+  const lastPointRef = useRef<{ x: number; y: number } | null>(null);
+  const appliedRemoteEventRef = useRef<string | null>(null);
 
   useEffect(() => { setPageIndex(0); }, [config]);
+  useEffect(() => {
+    if (!remoteEvent || remoteEvent.id === appliedRemoteEventRef.current) return;
+    const canvas = canvasRefs.current[remoteEvent.pageIndex];
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) return;
+    appliedRemoteEventRef.current = remoteEvent.id;
+    if (remoteEvent.clear) { ctx.clearRect(0, 0, canvas.width, canvas.height); return; }
+    if (!remoteEvent.from || !remoteEvent.to) return;
+    ctx.beginPath();
+    ctx.lineWidth = remoteEvent.lineWidth || 12;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.globalCompositeOperation = remoteEvent.isEraser ? 'destination-out' : 'source-over';
+    ctx.strokeStyle = remoteEvent.color || '#ef4444';
+    ctx.moveTo(remoteEvent.from.x, remoteEvent.from.y);
+    ctx.lineTo(remoteEvent.to.x, remoteEvent.to.y);
+    ctx.stroke();
+    ctx.beginPath();
+  }, [remoteEvent]);
 
   const getCanvasCoords = (e: React.MouseEvent | React.TouchEvent, index: number) => {
     const canvas = canvasRefs.current[index];
@@ -46,6 +71,7 @@ export const Step4Drawing: React.FC<Props> = ({ config, onNext, onPrev }) => {
     if (!ctx) return;
 
     const coords = getCanvasCoords(e, index);
+    lastPointRef.current = coords;
     ctx.beginPath();
     ctx.moveTo(coords.x, coords.y);
   };
@@ -59,20 +85,25 @@ export const Step4Drawing: React.FC<Props> = ({ config, onNext, onPrev }) => {
     if (!ctx) return;
 
     const coords = getCanvasCoords(e, index);
+    const previous = lastPointRef.current || coords;
     ctx.lineWidth = lineWidth;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.globalCompositeOperation = isEraser ? 'destination-out' : 'source-over';
     ctx.strokeStyle = currentColor;
+    ctx.moveTo(previous.x, previous.y);
     ctx.lineTo(coords.x, coords.y);
     ctx.stroke();
     ctx.beginPath();
     ctx.moveTo(coords.x, coords.y);
+    lastPointRef.current = coords;
+    onDrawingEvent?.({ id: crypto.randomUUID(), pageIndex: index, from: previous, to: coords, color: currentColor, isEraser, lineWidth });
   };
 
   const stopDrawing = () => {
     const index = drawingPageRef.current;
     drawingPageRef.current = null;
+    lastPointRef.current = null;
     const canvas = index === null ? null : canvasRefs.current[index];
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -85,6 +116,7 @@ export const Step4Drawing: React.FC<Props> = ({ config, onNext, onPrev }) => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    onDrawingEvent?.({ id: crypto.randomUUID(), pageIndex, clear: true });
     setMessage(null);
   };
 

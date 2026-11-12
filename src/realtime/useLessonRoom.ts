@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ClassroomViewState, LessonRoom, RoomCursor, RoomInteraction, RoomMember, RoomRole } from './lessonRoom';
+import { ClassroomViewState, LessonRoom, RoomCursor, RoomGameState, RoomInteraction, RoomMember, RoomRole } from './lessonRoom';
 import type { DesertAction } from '../desert/desertModel';
 
 export function useLessonRoom(callbacks: {
@@ -10,6 +10,7 @@ export function useLessonRoom(callbacks: {
   onClosed: () => void;
   onDesertAction: (action: DesertAction) => void;
   onInteraction: (interaction: RoomInteraction) => void;
+  onGameState: (state: RoomGameState) => void;
 }) {
   const roomRef = useRef<LessonRoom | null>(null);
   if (!roomRef.current) roomRef.current = new LessonRoom();
@@ -41,6 +42,7 @@ export function useLessonRoom(callbacks: {
         setRemoteCursors(previous => [...previous.filter(item => item.id !== cursor.id), cursor]);
       },
       onInteraction: interaction => callbacksRef.current.onInteraction(interaction),
+      onGameState: state => callbacksRef.current.onGameState(state),
       onAction: action => { setLastAction(action); callbacksRef.current.onAction(action); },
       onClosed: () => callbacksRef.current.onClosed(),
       onDesertAction: action => callbacksRef.current.onDesertAction(action),
@@ -95,6 +97,7 @@ export function useLessonRoom(callbacks: {
     publishView: (view: ClassroomViewState) => room.publishView(view),
     publishCursor: (x: number, y: number, clickAt?: number) => room.publishCursor(x, y, clickAt),
     publishInteraction: (interaction: Omit<RoomInteraction, 'role' | 'name'>) => room.publishInteraction(interaction),
+    publishGameState: (step: number, game: string, state: unknown, throttle?: boolean) => room.publishGameState(step, game, state, throttle),
     publishAction: (label: string) => room.publishAction(label),
     publishClosed: () => room.publishClosed(),
     publishDesertAction: (action: DesertAction) => room.publishDesertAction(action),

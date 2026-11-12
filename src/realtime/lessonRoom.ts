@@ -43,6 +43,13 @@ export interface RoomInteraction {
   controlIndex?: number;
 }
 
+export interface RoomGameState {
+  role: RoomRole;
+  step: number;
+  game: string;
+  state: unknown;
+}
+
 export interface LessonRoomCallbacks {
   onProgress?: (score: number) => void;
   onStep?: (step: number) => void;
@@ -50,6 +57,7 @@ export interface LessonRoomCallbacks {
   onMembers?: (members: RoomMember[]) => void;
   onCursor?: (cursor: RoomCursor | null) => void;
   onInteraction?: (interaction: RoomInteraction) => void;
+  onGameState?: (state: RoomGameState) => void;
   onAction?: (action: { role: RoomRole; name: string; label: string }) => void;
   onClosed?: () => void;
   onDesertAction?: (action: DesertAction) => void;
@@ -71,6 +79,7 @@ export class LessonRoom {
   private callbacks: LessonRoomCallbacks = {};
   private broadcastTimer = 0;
   private interactionTimer = 0;
+  private gameStateTimer = 0;
 
   setCallbacks(callbacks: LessonRoomCallbacks) {
     this.callbacks = callbacks;
@@ -108,6 +117,7 @@ export class LessonRoom {
       .on('broadcast', { event: 'lesson-view' }, ({ payload }) => this.callbacks.onView?.(payload as ClassroomViewState))
       .on('broadcast', { event: 'cursor' }, ({ payload }) => this.callbacks.onCursor?.(payload as RoomCursor))
       .on('broadcast', { event: 'interaction' }, ({ payload }) => this.callbacks.onInteraction?.(payload as RoomInteraction))
+      .on('broadcast', { event: 'game-state' }, ({ payload }) => this.callbacks.onGameState?.(payload as RoomGameState))
       .on('broadcast', { event: 'action' }, ({ payload }) => this.callbacks.onAction?.(payload as { role: RoomRole; name: string; label: string }))
       .on('broadcast', { event: 'room-closed' }, () => this.callbacks.onClosed?.())
       .on('broadcast', { event: 'desert-action' }, ({ payload }) => {
@@ -175,6 +185,14 @@ export class LessonRoom {
   publishAction(label: string) {
     if (!this.channel || !this.member) return;
     void this.channel.send({ type: 'broadcast', event: 'action', payload: { role: this.member.role, name: this.member.name, label } });
+  }
+
+  publishGameState(step: number, game: string, state: unknown, throttle = false) {
+    if (!this.channel || !this.member) return;
+    const now = Date.now();
+    if (throttle && now - this.gameStateTimer < 80) return;
+    this.gameStateTimer = now;
+    void this.channel.send({ type: 'broadcast', event: 'game-state', payload: { role: this.member.role, step, game, state } satisfies RoomGameState });
   }
 
   publishClosed() {
