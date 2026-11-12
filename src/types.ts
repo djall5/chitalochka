@@ -191,6 +191,20 @@ export interface Step15Config {
   videoName: string;
 }
 
+export interface SentencePicturePair {
+  id: string;
+  plainText: string;
+  syllabifiedText: string;
+  imageDataUrl: string;
+}
+
+export interface Step16Config {
+  title: string;
+  instruction: string;
+  displayMode: ReadAndChooseDisplayMode;
+  pairs: SentencePicturePair[];
+}
+
 export interface ReadingTextPage {
   id: string;
   imageDataUrl: string;
@@ -234,6 +248,7 @@ export interface LessonData {
   step13: Step13Config;
   step14: Step14Config;
   step15: Step15Config;
+  step16: Step16Config;
 }
 
 export type LessonStatus = 'in-progress' | 'completed' | 'repeat';

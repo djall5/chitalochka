@@ -3,6 +3,7 @@ import { defaultRocketSyllables } from './utils/rocketSyllables';
 import { defaultColoringStep } from './utils/coloringImage';
 import { defaultReadAndChooseStep } from './utils/readAndChoose';
 import { defaultMovementWarmup } from './utils/movementWarmup';
+import { defaultSentencePictureMatch } from './utils/sentencePictureMatch';
 
 export const defaultLessonY: LessonData = {
   id: 'lesson-y',
@@ -108,6 +109,7 @@ export const defaultLessonY: LessonData = {
   step13: defaultColoringStep(),
   step14: defaultReadAndChooseStep(),
   step15: defaultMovementWarmup(),
+  step16: defaultSentencePictureMatch(),
 };
 
 export const defaultLessonS: LessonData = {
@@ -204,6 +206,7 @@ export const defaultLessonS: LessonData = {
   step13: defaultColoringStep(),
   step14: defaultReadAndChooseStep(),
   step15: defaultMovementWarmup(),
+  step16: defaultSentencePictureMatch(),
 };
 
 export const PRESET_LESSONS = [defaultLessonY, defaultLessonS];

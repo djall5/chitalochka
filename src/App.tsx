@@ -17,6 +17,7 @@ import { Step12RocketSyllables } from './components/steps/Step12RocketSyllables'
 import { Step13ReadAndColor } from './components/steps/Step13ReadAndColor';
 import { Step14ReadAndChoose } from './components/steps/Step14ReadAndChoose';
 import { Step15MovementWarmup } from './components/steps/Step15MovementWarmup';
+import { Step16SentencePictureMatch } from './components/steps/Step16SentencePictureMatch';
 import { LessonEditor } from './components/editor/LessonEditor';
 import { LessonBuilder, TeacherWorkspace } from './components/TeacherWorkspace';
 import { collectLessonLearningProgress, LessonAttempt, mergeLearningProgress, StudentProfile, StudentRecord } from './components/StudentProfile';
@@ -698,7 +699,7 @@ function WorkspaceApp({ cloud, studentPortalToken = '', initialRoomSession }: { 
 
   const handleOpenStepInEditor = (index: number) => {
     const game = orderedGames[index];
-    if (game?.stepKey === 'step13' || game?.stepKey === 'step14' || game?.stepKey === 'step15') { setBuilderEditing(true); setScreen('builder'); return; }
+    if (game?.stepKey === 'step13' || game?.stepKey === 'step14' || game?.stepKey === 'step15' || game?.stepKey === 'step16') { setBuilderEditing(true); setScreen('builder'); return; }
     setEditorStartTab(game ? gameStepIndex(game.stepKey as GameStepKey) + 1 : 0);
     setScreen('edit');
   };
@@ -976,6 +977,7 @@ function WorkspaceApp({ cloud, studentPortalToken = '', initialRoomSession }: { 
             {currentGame?.stepKey === 'step13' && <Step13ReadAndColor config={activeLesson.step13} onPrev={goPrevious} onNext={goNext} onCorrectAnswer={handleCorrectAnswer} />}
             {currentGame?.stepKey === 'step14' && <Step14ReadAndChoose config={activeLesson.step14} onPrev={goPrevious} onNext={goNext} isLastGame={currentStep === orderedGames.length - 1} onCorrectAnswer={handleCorrectAnswer} />}
             {currentGame?.stepKey === 'step15' && <Step15MovementWarmup config={activeLesson.step15} onPrev={goPrevious} onNext={goNext} isLastGame={currentStep === orderedGames.length - 1} onCorrectAnswer={handleCorrectAnswer} />}
+            {currentGame?.stepKey === 'step16' && <Step16SentencePictureMatch config={activeLesson.step16} onPrev={goPrevious} onNext={goNext} isLastGame={currentStep === orderedGames.length - 1} onCorrectAnswer={handleCorrectAnswer} sharedSeed={collaboration.roomId || undefined} />}
           </div>
           {currentGame && currentStep < orderedGames.length - 1 && <div className="mt-4 flex justify-center"><button onClick={goNext} className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs font-black text-slate-500 transition hover:border-pink-200 hover:bg-pink-50 hover:text-pink-700">Пропустить задание <span aria-hidden="true">→</span></button></div>}
           {currentGame && currentStep === orderedGames.length - 1 && <div className="mt-4 flex justify-center">{screen === 'preview' ? <button onClick={() => setScreen('builder')} className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-pink-500 to-purple-600 px-6 py-3 text-sm font-black text-white shadow-md transition hover:brightness-105 active:scale-[.98]"><Edit3 className="h-4 w-4" />Вернуться к редактированию</button> : <button onClick={handleFinishLesson} className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-6 py-3 text-sm font-black text-white shadow-md transition hover:brightness-105 active:scale-[.98]"><Award className="h-4 w-4" />Завершить урок</button>}</div>}

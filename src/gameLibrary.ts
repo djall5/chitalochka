@@ -3,8 +3,9 @@ import { defaultRocketSyllables } from './utils/rocketSyllables';
 import { defaultColoringStep } from './utils/coloringImage';
 import { defaultReadAndChooseStep } from './utils/readAndChoose';
 import { defaultMovementWarmup } from './utils/movementWarmup';
+import { defaultSentencePictureMatch } from './utils/sentencePictureMatch';
 
-export type GameStepKey = 'step1' | 'step2' | 'step3' | 'step4' | 'step5' | 'step6' | 'step7' | 'step8' | 'step9' | 'step10' | 'step11' | 'step12' | 'step13' | 'step14' | 'step15';
+export type GameStepKey = 'step1' | 'step2' | 'step3' | 'step4' | 'step5' | 'step6' | 'step7' | 'step8' | 'step9' | 'step10' | 'step11' | 'step12' | 'step13' | 'step14' | 'step15' | 'step16';
 
 export interface GameLibraryItem {
   id: string;
@@ -32,12 +33,13 @@ export const DEFAULT_GAME_LIBRARY: GameLibraryItem[] = [
   { id: 'read-and-color', title: 'Прочитай и раскрась', emoji: '🖼️', category: 'Чтение', description: 'Читай предложения и раскрашивай рисунок по тексту.', stepKey: 'step13' },
   { id: 'read-and-choose', title: 'Прочитай и выбери', emoji: '🖼️', category: 'Чтение', description: 'Прочитай предложение и выбери подходящую картинку.', stepKey: 'step14' },
   { id: 'movement-warmup', title: 'Активная разминка', emoji: '🤸', category: 'Разминка', description: 'Посмотри ролик и повтори движения перед уроком.', stepKey: 'step15' },
+  { id: 'sentence-picture-match', title: 'Соедини картинку с предложением', emoji: '🔗', category: 'Чтение', description: 'Прочитай предложения и соедини их с подходящими картинками.', stepKey: 'step16' },
 ];
 
 export const gameStepIndex = (key: GameStepKey) => Number(key.slice(4)) - 1;
 
 export const lessonGameOrder = (lesson: LessonData) =>
-  lesson.gameOrder?.length ? lesson.gameOrder : DEFAULT_GAME_LIBRARY.filter(game => !['step7', 'step8', 'step9', 'step10', 'step11', 'step12', 'step13', 'step14', 'step15'].includes(game.stepKey)).map(game => game.id);
+  lesson.gameOrder?.length ? lesson.gameOrder : DEFAULT_GAME_LIBRARY.filter(game => !['step7', 'step8', 'step9', 'step10', 'step11', 'step12', 'step13', 'step14', 'step15', 'step16'].includes(game.stepKey)).map(game => game.id);
 
 export const cloneLesson = (lesson: LessonData): LessonData => {
   const copy = JSON.parse(JSON.stringify(lesson)) as LessonData;
@@ -50,6 +52,7 @@ export const cloneLesson = (lesson: LessonData): LessonData => {
   if (!copy.step13) copy.step13 = defaultColoringStep();
   if (!copy.step14) copy.step14 = defaultReadAndChooseStep();
   if (!copy.step15) copy.step15 = defaultMovementWarmup();
+  if (!copy.step16) copy.step16 = defaultSentencePictureMatch();
   if (!copy.step6) copy.step6 = { title: '📖 Читаем слова!', instruction: 'Нажимайте на карточки со словами и читайте их вслух!', cards: [] };
   if (!Number.isFinite(copy.step10.targetCount)) copy.step10.targetCount = 16;
   if (!Array.isArray(copy.step11.syllables)) copy.step11.syllables = [];
@@ -69,6 +72,14 @@ export const cloneLesson = (lesson: LessonData): LessonData => {
     syllabifiedText: task.syllabifiedText || '',
     displayMode: task.displayMode === 'syllables' ? 'syllables' : 'whole',
     answers: Array.isArray(task.answers) ? task.answers.map((answer, answerIndex) => ({ id: answer.id || `read-choose-answer-${taskIndex + 1}-${answerIndex + 1}`, imageDataUrl: answer.imageDataUrl || '', isCorrect: Boolean(answer.isCorrect) })) : [],
+  }));
+  if (!Array.isArray(copy.step16.pairs)) copy.step16.pairs = [];
+  copy.step16.displayMode = copy.step16.displayMode === 'syllables' ? 'syllables' : 'whole';
+  copy.step16.pairs = copy.step16.pairs.map((pair, index) => ({
+    id: pair.id || `sentence-picture-${index + 1}`,
+    plainText: pair.plainText || '',
+    syllabifiedText: pair.syllabifiedText || '',
+    imageDataUrl: pair.imageDataUrl || '',
   }));
   const legacyCards = copy.step6.cards as Array<ReadingCardItem & { showSyllables?: boolean }>;
   if (!copy.step6.displayMode) {
