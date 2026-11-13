@@ -288,6 +288,20 @@ function WorkspaceApp({ cloud, studentPortalToken = '', initialRoomSession }: { 
       if (isUp) control.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX, clientY, button: interaction.button }));
     },
     onGameState: update => {
+      if (update.game === 'desert' && update.role === 'teacher' && collaboration.role === 'student') {
+        const desertState = update.state as { open?: boolean; snapshot?: { studentId: string; desert: DesertState; earned: number } } | null;
+        if (!desertState?.open) {
+          setShowCompletion(false);
+          setScreen('play');
+          return;
+        }
+        if (!desertState.snapshot) return;
+        setDesertSnapshot(desertState.snapshot);
+        setDesertReturnScreen('play');
+        setShowCompletion(false);
+        setScreen('desert');
+        return;
+      }
       if (update.step !== currentStep) return;
       setSharedGameStates(previous => ({ ...previous, [`${update.step}:${update.game}`]: update.state }));
     },
@@ -840,6 +854,12 @@ function WorkspaceApp({ cloud, studentPortalToken = '', initialRoomSession }: { 
       setDesertReturnScreen(screen === 'student' ? 'student' : studentPortalToken ? 'student-portal' : 'play');
       setShowCompletion(false);
       setScreen('desert');
+      if (collaboration.role === 'teacher') {
+        collaboration.publishGameState(-1, 'desert', {
+          open: true,
+          snapshot: { studentId: activeStudent.id, ...result },
+        });
+      }
     } catch (error) { showToast(error instanceof Error ? error.message : 'Не удалось открыть пустыню.'); }
     finally { setDesertLoading(false); }
   };
@@ -873,6 +893,12 @@ function WorkspaceApp({ cloud, studentPortalToken = '', initialRoomSession }: { 
     try {
       const result = await mutateStudentDesert(studentId, studentPortalToken, action);
       setDesertSnapshot({ studentId, ...result });
+      if (collaboration.role === 'teacher') {
+        collaboration.publishGameState(-1, 'desert', {
+          open: true,
+          snapshot: { studentId, ...result },
+        });
+      }
       return result.desert;
     } finally {
       desertMutationsInFlightRef.current = Math.max(0, desertMutationsInFlightRef.current - 1);
@@ -881,6 +907,7 @@ function WorkspaceApp({ cloud, studentPortalToken = '', initialRoomSession }: { 
 
   const closeDesert = () => {
     if (collaboration.role === 'student' && !studentPortalToken) collaboration.publishAction('закрыть пустыню');
+    if (collaboration.role === 'teacher') collaboration.publishGameState(-1, 'desert', { open: false });
     setScreen(collaboration.roomId ? 'play' : desertReturnScreen);
     setShowCompletion(false);
   };
@@ -984,7 +1011,10 @@ function WorkspaceApp({ cloud, studentPortalToken = '', initialRoomSession }: { 
         {(screen === 'play' || screen === 'preview') && <div ref={lessonSurfaceRef} className="w-full max-w-[650px] bg-white/95 backdrop-blur-md rounded-3xl shadow-2xl border-2 border-pink-200 p-4 md:p-7 relative text-center">
           {collaboration.remoteCursors.filter(cursor => cursor.x >= 0 && cursor.x <= 1 && cursor.y >= 0 && cursor.y <= 1).map(cursor => <div key={cursor.id} className={`pointer-events-none absolute z-[60] transition-[left,top] duration-75 ${cursor.role === 'teacher' ? 'text-violet-700' : 'text-emerald-700'}`} style={{ left: `${cursor.x * 100}%`, top: `${cursor.y * 100}%` }}>
             {cursor.role === 'teacher'
-              ? <span aria-label="Указка учителя" className="block -translate-x-1 -translate-y-1 select-none text-3xl leading-none drop-shadow-md">👉</span>
+              ? <svg aria-label="Указка учителя" viewBox="0 0 28 42" className="block h-10 w-7 drop-shadow-md" style={{ transform: 'translate(-2px, -2px)' }}>
+                  <path d="M2 2v31l8-8 6 15 6-2-6-15 10-1L2 2Z" fill="#f97316" stroke="#7c2d12" strokeWidth="2.5" strokeLinejoin="round" />
+                  <path d="m6 8 13 12-7 .7-6 6.2V8Z" fill="#fed7aa" opacity=".95" />
+                </svg>
               : <><MousePointer2 className="h-6 w-6 fill-emerald-300 drop-shadow" /><span className="ml-1 rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-black text-white shadow">{cursor.name || 'Ученик'}</span></>}
           </div>)}
           <div className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-xs font-black text-amber-700">⭐ {score} баллов</div>
