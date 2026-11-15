@@ -24,7 +24,7 @@ export function Step15MovementWarmup({ config, onPrev, onNext, isLastGame, onCor
     <h2 className="mt-3 text-2xl font-black text-pink-600">{config.title}</h2>
     <p className="mt-1 text-sm font-semibold text-slate-600">{config.instruction}</p>
     <div className="mt-5 overflow-hidden rounded-3xl border-2 border-pink-200 bg-slate-950 p-2 shadow-lg">
-      <video className="mx-auto max-h-[58vh] w-full rounded-2xl bg-black" src={config.videoDataUrl} controls playsInline onEnded={finish}>Ваш браузер не поддерживает видео.</video>
+      <video className="mx-auto max-h-[58vh] w-full rounded-2xl bg-black" src={config.videoDataUrl} controls playsInline preload="metadata" onEnded={finish}>Ваш браузер не поддерживает видео.</video>
     </div>
     <p className="mt-3 text-xs font-semibold text-slate-400">Повторяй движения вместе с роликом. {config.videoName && `Видео: ${config.videoName}`}</p>
     {completed ? <div className="mt-4 rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-700">Отлично! Разминка выполнена.</div> : <button onClick={finish} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-5 py-3 text-sm font-black text-white shadow"><CheckCircle2 className="h-4 w-4" />Я готов!</button>}

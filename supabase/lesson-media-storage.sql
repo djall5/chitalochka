@@ -8,7 +8,7 @@ values (
   'lesson-media',
   'lesson-media',
   true,
-  12582912,
+  52428800,
   array[
     'image/jpeg',
     'image/png',

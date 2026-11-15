@@ -1,5 +1,6 @@
 import { createClient, Session, SupabaseClient } from '@supabase/supabase-js';
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import * as tus from 'tus-js-client';
 import { GameLibraryItem } from '../gameLibrary';
 import { LessonAttempt, StudentLearningProgress, StudentRecord } from '../components/StudentProfile';
 import { LessonData } from '../types';
@@ -42,11 +43,59 @@ const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 const client: SupabaseClient | null = url && key ? createClient(url, key) : null;
 const LESSON_MEDIA_BUCKET = 'lesson-media';
 const MEDIA_DATA_URL_KEYS = new Set(['backgroundImageDataUrl', 'imageDataUrl', 'regionMapDataUrl', 'videoDataUrl']);
+export const MAX_WARMUP_VIDEO_BYTES = 50 * 1024 * 1024;
 
 type MediaReference = { parent: Record<string, unknown>; key: string; dataUrl: string };
 
 export function getCloudClient() {
   return client;
+}
+
+/** Uploads a warm-up video directly to Storage, so it never enters lesson JSON or Realtime. */
+export async function uploadWarmupVideo(file: File, onProgress?: (loaded: number, total: number) => void): Promise<string> {
+  if (!client || !url) throw new Error('Облачное хранилище не настроено.');
+  if (!['video/mp4', 'video/webm'].includes(file.type)) throw new Error('Подойдут видео в формате MP4 или WebM.');
+  if (file.size > MAX_WARMUP_VIDEO_BYTES) throw new Error('Видео должно быть не больше 50 МБ.');
+  const { data: { session } } = await client.auth.getSession();
+  if (!session) throw new Error('Чтобы добавить видео, войдите в кабинет учителя.');
+
+  const extension = fileExtension(`data:${file.type};base64,`, file.type);
+  // The deterministic object key lets tus find and continue this exact upload
+  // after a temporary network failure or an accidental page refresh.
+  const path = `${session.user.id}/warmups/${file.lastModified}-${file.size}.${extension}`;
+  const endpoint = `${url.replace(/\/$/, '')}/storage/v1/upload/resumable`;
+
+  return new Promise<string>((resolve, reject) => {
+    const upload = new tus.Upload(file, {
+      endpoint,
+      chunkSize: 6 * 1024 * 1024,
+      retryDelays: [0, 1000, 3000, 5000, 10000],
+      removeFingerprintOnSuccess: true,
+      headers: {
+        authorization: `Bearer ${session.access_token}`,
+        apikey: key || '',
+        'x-upsert': 'true',
+      },
+      metadata: {
+        bucketName: LESSON_MEDIA_BUCKET,
+        objectName: path,
+        contentType: file.type,
+        cacheControl: '31536000',
+      },
+      fingerprint: () => Promise.resolve(`warmup:${path}:${file.name}:${file.size}:${file.lastModified}`),
+      onProgress: (loaded, total) => onProgress?.(loaded, total),
+      onError: error => reject(new Error(`Не удалось загрузить видео: ${error.message}`)),
+      onSuccess: () => {
+        const { data } = client.storage.from(LESSON_MEDIA_BUCKET).getPublicUrl(path);
+        resolve(data.publicUrl);
+      },
+    });
+
+    void upload.findPreviousUploads().then(previous => {
+      if (previous.length) upload.resumeFromPreviousUpload(previous[0]);
+      upload.start();
+    }).catch(error => reject(error instanceof Error ? error : new Error('Не удалось продолжить загрузку видео.')));
+  });
 }
 
 function findMediaReferences(value: unknown, references: MediaReference[] = []): MediaReference[] {
