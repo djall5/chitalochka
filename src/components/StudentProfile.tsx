@@ -254,6 +254,7 @@ export function StudentProfile({ studentId, name, attempts, lessons, games, lear
   const [portalBusy, setPortalBusy] = useState(false);
   const [portalMessage, setPortalMessage] = useState('');
   const [profileTab, setProfileTab] = useState<'letters' | 'notes' | 'reports'>('letters');
+  const [selectedReportId, setSelectedReportId] = useState('');
   const progress = planningProgressForStudent(learningProgress, attempts, lessons, games);
 
   const createPortalLink = async () => {
@@ -309,8 +310,9 @@ export function StudentProfile({ studentId, name, attempts, lessons, games, lear
     }));
     updateReport(report.id, { attachmentDataUrls: [...report.attachmentDataUrls, ...images] });
   };
-  const copyLatestReport = async () => {
-    const report = [...parentReports].sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime())[0];
+  const copyReport = async (reportId = selectedReportId) => {
+    const sorted = [...parentReports].sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime());
+    const report = sorted.find(item => item.id === reportId) || sorted[0];
     if (!report) return;
     const text = [`${report.lessonTitle} · ${new Date(report.completedAt).toLocaleDateString('ru-RU')}`, '', report.summary, report.teacherComment && `Что закрепляем дальше: ${report.teacherComment}`, report.homeworkText && `Домашняя тренировка (по желанию): ${report.homeworkText}`].filter(Boolean).join('\n\n');
     await navigator.clipboard.writeText(text);
@@ -326,7 +328,7 @@ export function StudentProfile({ studentId, name, attempts, lessons, games, lear
       <CharacterEditor character={character} onChange={onCharacterChange} />
       <div className="mt-5 grid gap-3 sm:grid-cols-3"><Stat icon={<BookOpen className="h-5 w-5" />} label="Уроков пройдено" value={lessonAttempts.length} /><Stat icon={<Award className="h-5 w-5" />} label="Баллов за урок в среднем" value={average} /><Stat icon={<Trophy className="h-5 w-5" />} label="Лучший результат" value={lessonAttempts.length ? Math.max(...lessonAttempts.map(attempt => attempt.points)) : 0} /></div>
 
-      {profileTab === 'reports' && parentReports.length > 0 && <button type="button" onClick={() => void copyLatestReport()} className="mt-5 rounded-xl bg-violet-600 px-4 py-2 text-xs font-black text-white">Скопировать последний отчёт</button>}
+      {profileTab === 'reports' && parentReports.length > 0 && <div className="mt-5 flex flex-wrap gap-2"><select value={selectedReportId} onChange={event => setSelectedReportId(event.target.value)} className="rounded-xl border border-violet-200 bg-white px-3 py-2 text-xs font-bold text-slate-700"><option value="">Последний отчёт</option>{[...parentReports].sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime()).map(report => <option key={report.id} value={report.id}>{report.lessonTitle} · {new Date(report.completedAt).toLocaleDateString('ru-RU')}</option>)}</select><button type="button" onClick={() => void copyReport()} className="rounded-xl bg-violet-600 px-4 py-2 text-xs font-black text-white">Скопировать выбранный отчёт</button></div>}
       <section className="mt-7 rounded-2xl border border-sky-100 bg-sky-50/50 p-4 md:p-5">
         <div className="inline-flex rounded-xl border border-sky-100 bg-white p-1 text-xs font-black">
           <button type="button" onClick={() => setProfileTab('letters')} className={`rounded-lg px-3 py-2 transition ${profileTab === 'letters' ? 'bg-sky-600 text-white shadow-sm' : 'text-slate-500 hover:bg-sky-50'}`}>Буквы</button>
