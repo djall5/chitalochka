@@ -42,7 +42,7 @@ const url = import.meta.env.VITE_SUPABASE_URL;
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 const client: SupabaseClient | null = url && key ? createClient(url, key) : null;
 const LESSON_MEDIA_BUCKET = 'lesson-media';
-const MEDIA_DATA_URL_KEYS = new Set(['backgroundImageDataUrl', 'imageDataUrl', 'regionMapDataUrl', 'videoDataUrl']);
+const MEDIA_DATA_URL_KEYS = new Set(['backgroundImageDataUrl', 'imageDataUrl', 'regionMapDataUrl', 'videoDataUrl', 'attachmentDataUrls']);
 export const MAX_WARMUP_VIDEO_BYTES = 50 * 1024 * 1024;
 
 type MediaReference = { parent: Record<string, unknown>; key: string; dataUrl: string };
@@ -106,7 +106,9 @@ function findMediaReferences(value: unknown, references: MediaReference[] = []):
   if (!value || typeof value !== 'object') return references;
   const record = value as Record<string, unknown>;
   for (const [key, child] of Object.entries(record)) {
-    if (MEDIA_DATA_URL_KEYS.has(key) && typeof child === 'string' && child.startsWith('data:')) {
+    if (key === 'attachmentDataUrls' && Array.isArray(child)) {
+      child.forEach((item, index) => { if (typeof item === 'string' && item.startsWith('data:')) references.push({ parent: child as unknown as Record<string, unknown>, key: String(index), dataUrl: item }); });
+    } else if (MEDIA_DATA_URL_KEYS.has(key) && typeof child === 'string' && child.startsWith('data:')) {
       references.push({ parent: record, key, dataUrl: child });
     } else {
       findMediaReferences(child, references);

@@ -14,6 +14,18 @@ export interface LessonAttempt {
   source?: 'teacher';
 }
 
+export interface ParentReport {
+  id: string;
+  lessonId: string;
+  lessonTitle: string;
+  completedAt: string;
+  createdAt: string;
+  summary: string;
+  teacherComment: string;
+  homeworkText: string;
+  attachmentDataUrls: string[];
+}
+
 export type LearningProgressStatus = 'working' | 'mastered' | 'focus';
 export type LearningProgressCategory = 'letters' | 'syllables' | 'words';
 
@@ -37,7 +49,23 @@ export interface StudentRecord {
   lessons: LessonData[];
   learningProgress?: StudentLearningProgress;
   teacherNotes?: string;
+  parentReports?: ParentReport[];
   character?: CharacterImages;
+}
+
+export function createParentReport(lesson: LessonData, attempt: LessonAttempt, games: GameLibraryItem[]): ParentReport {
+  const gameKeys = lessonGameOrder(lesson).map(id => {
+    const sourceId = lesson.gameInstances?.[id]?.sourceGameId || id;
+    return games.find(game => game.id === sourceId)?.stepKey || DEFAULT_GAME_LIBRARY.find(game => game.id === sourceId)?.stepKey;
+  });
+  const target = lesson.targetLetter?.trim();
+  const parts: string[] = [];
+  if (target) parts.push(`закреплял${target.length > 1 ? ' сочетание' : ' букву'} ${target}`);
+  if (gameKeys.some(key => ['step6', 'step7', 'step8', 'step14', 'step16', 'step17'].includes(key || ''))) parts.push('отрабатывал чтение слов и понимание прочитанного');
+  if (gameKeys.some(key => ['step1', 'step2', 'step11', 'step12'].includes(key || ''))) parts.push('читал и закреплял слоги');
+  if (gameKeys.some(key => ['step3', 'step5', 'step10'].includes(key || ''))) parts.push('повторял знакомые буквы в игровых заданиях');
+  const summary = `Сегодня ${lesson.title ? `на занятии «${lesson.title}» ` : ''}${parts.length ? parts.join(', ') : 'выполнял игровые задания на чтение и внимание'}.`;
+  return { id: crypto.randomUUID(), lessonId: lesson.id, lessonTitle: lesson.title, completedAt: attempt.completedAt, createdAt: new Date().toISOString(), summary, teacherComment: '', homeworkText: '', attachmentDataUrls: [] };
 }
 
 type ProgressGame = { stepKey: string; config?: unknown };
@@ -197,10 +225,12 @@ type Props = {
   games: GameLibraryItem[];
   learningProgress?: StudentLearningProgress;
   teacherNotes: string;
+  parentReports?: ParentReport[];
   saveState: 'saved' | 'saving' | 'error';
   onNameChange: (name: string) => void;
   onLearningProgressChange: (progress: StudentLearningProgress) => void;
   onTeacherNotesChange: (notes: string) => void;
+  onParentReportsChange: (reports: ParentReport[]) => void;
   onBack: () => void;
   onCreatePortalLink: (studentId: string) => Promise<string>;
   character?: CharacterImages;
@@ -210,7 +240,7 @@ type Props = {
   onOpenDesert: () => void;
 };
 
-export function StudentProfile({ studentId, name, attempts, lessons, games, learningProgress, teacherNotes, saveState, character, onCharacterChange, desertBalance, onAwardPoints, onOpenDesert, onNameChange, onLearningProgressChange, onTeacherNotesChange, onBack, onCreatePortalLink }: Props) {
+export function StudentProfile({ studentId, name, attempts, lessons, games, learningProgress, teacherNotes, parentReports = [], saveState, character, onCharacterChange, desertBalance, onAwardPoints, onOpenDesert, onNameChange, onLearningProgressChange, onTeacherNotesChange, onParentReportsChange, onBack, onCreatePortalLink }: Props) {
   const totalPoints = attempts.reduce((sum, attempt) => sum + attempt.points, 0);
   const lessonAttempts = attempts.filter(attempt => attempt.source !== 'teacher');
   const lessonPoints = lessonAttempts.reduce((sum, attempt) => sum + attempt.points, 0);
@@ -221,7 +251,7 @@ export function StudentProfile({ studentId, name, attempts, lessons, games, lear
   const [portalUrl, setPortalUrl] = useState('');
   const [portalBusy, setPortalBusy] = useState(false);
   const [portalMessage, setPortalMessage] = useState('');
-  const [profileTab, setProfileTab] = useState<'letters' | 'notes'>('letters');
+  const [profileTab, setProfileTab] = useState<'letters' | 'notes' | 'reports'>('letters');
   const progress = planningProgressForStudent(learningProgress, attempts, lessons, games);
 
   const createPortalLink = async () => {
@@ -259,6 +289,24 @@ export function StudentProfile({ studentId, name, attempts, lessons, games, lear
     const nextStatus = statusCycle[(statusCycle.indexOf(currentStatus) + 1) % statusCycle.length];
     onLearningProgressChange(setLetterStatus(progress, letter, nextStatus));
   };
+  const updateReport = (id: string, patch: Partial<ParentReport>) => onParentReportsChange(parentReports.map(report => report.id === id ? { ...report, ...patch } : report));
+  const createHistoricalReport = (attempt: LessonAttempt) => {
+    const lesson = lessons.find(item => item.id === attempt.lessonId);
+    if (!lesson) return;
+    onParentReportsChange([...parentReports, createParentReport(lesson, attempt, games)]);
+  };
+  const addReportImage = async (report: ParentReport, files?: FileList | null) => {
+    if (!files?.length) return;
+    const images = await Promise.all([...files].slice(0, 6).map(async file => {
+      const bitmap = await createImageBitmap(file);
+      const scale = Math.min(1, 1000 / bitmap.width, 1000 / bitmap.height);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale)); canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      canvas.getContext('2d')?.drawImage(bitmap, 0, 0, canvas.width, canvas.height); bitmap.close();
+      return canvas.toDataURL('image/jpeg', 0.84);
+    }));
+    updateReport(report.id, { attachmentDataUrls: [...report.attachmentDataUrls, ...images] });
+  };
 
   return <div className="w-full max-w-5xl px-1 pb-6">
     <div className="mb-5 flex flex-wrap items-end justify-between gap-3"><div><div className="text-[10px] font-black uppercase tracking-[.2em] text-pink-600">Профиль ученика</div><h1 className="mt-1 text-2xl font-black text-slate-800 md:text-3xl">Карточка ученика</h1><p className={`mt-1 text-xs font-semibold ${saveState === 'error' ? 'text-rose-600' : 'text-slate-500'}`} role="status">{saveState === 'saved' ? 'Изменения сохранены в облаке' : saveState === 'saving' ? 'Сохраняем изменения…' : 'Не удалось сохранить. Повторяем попытку…'}</p></div><button onClick={onBack} className="inline-flex items-center gap-2 rounded-xl border border-pink-200 bg-white px-3 py-2 text-xs font-black text-pink-700"><ArrowLeft className="h-4 w-4" />К урокам</button></div>
@@ -273,11 +321,11 @@ export function StudentProfile({ studentId, name, attempts, lessons, games, lear
       <section className="mt-7 rounded-2xl border border-sky-100 bg-sky-50/50 p-4 md:p-5">
         <div className="inline-flex rounded-xl border border-sky-100 bg-white p-1 text-xs font-black">
           <button type="button" onClick={() => setProfileTab('letters')} className={`rounded-lg px-3 py-2 transition ${profileTab === 'letters' ? 'bg-sky-600 text-white shadow-sm' : 'text-slate-500 hover:bg-sky-50'}`}>Буквы</button>
-          <button type="button" onClick={() => setProfileTab('notes')} className={`rounded-lg px-3 py-2 transition ${profileTab === 'notes' ? 'bg-sky-600 text-white shadow-sm' : 'text-slate-500 hover:bg-sky-50'}`}>Заметки учителя</button>
+          <button type="button" onClick={() => setProfileTab('notes')} className={`rounded-lg px-3 py-2 transition ${profileTab === 'notes' ? 'bg-sky-600 text-white shadow-sm' : 'text-slate-500 hover:bg-sky-50'}`}>Заметки учителя</button><button type="button" onClick={() => setProfileTab('reports')} className={`rounded-lg px-3 py-2 transition ${profileTab === 'reports' ? 'bg-sky-600 text-white shadow-sm' : 'text-slate-500 hover:bg-sky-50'}`}>Отчёты</button>
         </div>
         {profileTab === 'letters' ? <><div className="mt-4 flex flex-wrap items-start justify-between gap-3"><div><h2 className="flex items-center gap-2 text-base font-black text-slate-800"><BookOpen className="h-4 w-4 text-sky-600" />Прогресс по буквам</h2><p className="mt-1 max-w-2xl text-xs font-medium text-slate-500">Серые буквы ещё не взяты в работу. После завершения урока его буква становится жёлтой. Нажимайте на букву, чтобы изменить её статус.</p></div><div className="flex flex-wrap gap-1.5 text-[10px] font-black"><span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-1 text-slate-500">Не в работе</span>{(Object.entries(statusDetails) as [LearningProgressStatus, typeof statusDetails.working][]).map(([status, detail]) => <span key={status} className={`rounded-full border px-2 py-1 ${detail.className}`}>{detail.label}</span>)}</div></div>
           <div className="mt-5 grid grid-cols-6 gap-2 sm:grid-cols-9 md:grid-cols-11">{russianAlphabet.map(letter => { const status = progress.letters.find(item => item.value === letter)?.status; const detail = status && status !== 'not_started' ? statusDetails[status] : null; const label = detail?.label || 'Не в работе'; return <button key={letter} type="button" onClick={() => cycleLetterStatus(letter)} title={`${letter}: ${label}. Нажмите, чтобы изменить.`} aria-label={`${letter}: ${label}. Нажмите, чтобы изменить.`} className={`aspect-square rounded-xl border text-lg font-black shadow-sm transition hover:scale-105 focus:outline-none focus:ring-2 focus:ring-sky-300 ${detail ? detail.className : 'border-slate-200 bg-slate-100 text-slate-400'}`}>{letter}</button>; })}</div>
-        </> : <div className="mt-4 rounded-2xl border border-violet-100 bg-white p-4"><h2 className="flex items-center gap-2 text-base font-black text-slate-800"><BookOpen className="h-4 w-4 text-violet-600" />Заметки учителя</h2><p className="mt-1 text-xs font-medium text-slate-500">Запишите слоги, слова и задачи, которые нужно взять в работу с учеником.</p><textarea value={teacherNotes} onChange={event => onTeacherNotesChange(event.target.value)} rows={8} placeholder={'Например:\n• Слоги: ША, ШО, ШУ\n• Слова: шапка, машина\n• Отработать звук [Ш] в начале слова'} className="mt-4 w-full resize-y rounded-xl border border-violet-200 bg-violet-50/30 px-3 py-3 text-sm font-medium text-slate-700 outline-none placeholder:text-slate-400 focus:border-violet-500" aria-label="Заметки учителя" /><p className="mt-2 text-[10px] font-semibold text-slate-400">Состояние сохранения показано вверху карточки.</p></div>}
+        </> : profileTab === 'notes' ? <div className="mt-4 rounded-2xl border border-violet-100 bg-white p-4"><h2 className="flex items-center gap-2 text-base font-black text-slate-800"><BookOpen className="h-4 w-4 text-violet-600" />Заметки учителя</h2><p className="mt-1 text-xs font-medium text-slate-500">Запишите слоги, слова и задачи, которые нужно взять в работу с учеником.</p><textarea value={teacherNotes} onChange={event => onTeacherNotesChange(event.target.value)} rows={8} placeholder={'Например:\n• Слоги: ША, ШО, ШУ\n• Слова: шапка, машина\n• Отработать звук [Ш] в начале слова'} className="mt-4 w-full resize-y rounded-xl border border-violet-200 bg-violet-50/30 px-3 py-3 text-sm font-medium text-slate-700 outline-none placeholder:text-slate-400 focus:border-violet-500" aria-label="Заметки учителя" /><p className="mt-2 text-[10px] font-semibold text-slate-400">Состояние сохранения показано вверху карточки.</p></div> : <div className="mt-4 space-y-3">{[...parentReports].sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime()).map(report => <article key={report.id} className="rounded-2xl border border-pink-100 bg-white p-4"><div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-sm font-black text-slate-800">Итог занятия: {report.lessonTitle}</h2><span className="text-[10px] font-bold text-slate-400">{new Date(report.completedAt).toLocaleDateString('ru-RU')}</span></div><p className="mt-3 rounded-xl bg-pink-50 p-3 text-sm font-medium text-slate-700">{report.summary}</p><label className="mt-3 block text-[10px] font-black text-slate-600">Что закрепляем дальше · комментарий учителя<textarea value={report.teacherComment} onChange={event => updateReport(report.id, { teacherComment: event.target.value })} rows={2} className="mt-1 w-full rounded-xl border border-slate-200 p-2 text-sm" placeholder="Например, спокойно повторить слова с БР." /></label><label className="mt-3 block text-[10px] font-black text-slate-600">Домашняя подсказка (по желанию)<textarea value={report.homeworkText} onChange={event => updateReport(report.id, { homeworkText: event.target.value })} rows={2} className="mt-1 w-full rounded-xl border border-slate-200 p-2 text-sm" placeholder="Идея для короткой домашней игры." /></label><label className="mt-3 inline-flex cursor-pointer rounded-xl bg-violet-50 px-3 py-2 text-xs font-black text-violet-700">Добавить материалы<input type="file" accept="image/*" multiple className="hidden" onChange={event => { void addReportImage(report, event.target.files); event.currentTarget.value = ''; }} /></label>{report.attachmentDataUrls.length > 0 && <div className="mt-3 flex flex-wrap gap-2">{report.attachmentDataUrls.map((url, index) => <a key={`${report.id}-${index}`} href={url} download={`материал-${report.lessonTitle}-${index + 1}.jpg`} className="block h-20 w-20 rounded-xl border border-violet-200 bg-white p-1"><img src={url} alt={`Материал ${index + 1}`} className="h-full w-full object-contain" /></a>)}</div>}</article>)}{lessonAttempts.filter(attempt => !parentReports.some(report => report.lessonId === attempt.lessonId && report.completedAt === attempt.completedAt)).map(attempt => <button key={attempt.id} type="button" onClick={() => createHistoricalReport(attempt)} className="w-full rounded-xl border border-dashed border-violet-300 bg-violet-50 p-3 text-left text-xs font-black text-violet-700">✨ Создать отчёт для «{attempt.lessonTitle}» · {new Date(attempt.completedAt).toLocaleDateString('ru-RU')}</button>)}</div>}
       </section>
 
       <div className="mt-7"><h2 className="mb-3 text-base font-black text-slate-800">История баллов</h2>{attempts.length ? <div className="space-y-2">{[...attempts].reverse().map((attempt, index) => <article key={attempt.id} className="flex flex-wrap items-center gap-3 rounded-2xl border border-pink-100 bg-white p-3"><div className="grid h-10 w-10 place-items-center rounded-xl bg-pink-50 text-lg">{attempt.source === 'teacher' ? '⭐' : index === 0 ? '🏅' : '📖'}</div><div className="min-w-0 flex-1"><h3 className="truncate text-xs font-black text-slate-800">{attempt.lessonTitle}</h3><p className="mt-1 text-[10px] font-semibold text-slate-400">{new Date(attempt.completedAt).toLocaleString('ru-RU', { dateStyle: 'medium', timeStyle: 'short' })}</p></div><div className="rounded-xl bg-amber-50 px-3 py-2 text-xs font-black text-amber-700">⭐ {attempt.points} баллов</div></article>)}</div> : <div className="rounded-2xl border-2 border-dashed border-pink-200 bg-pink-50/50 p-8 text-center"><div className="text-3xl">🌱</div><p className="mt-2 text-sm font-black text-slate-700">Пока нет начислений</p><p className="mt-1 text-xs font-semibold text-slate-500">Баллы появятся после урока или начисления учителем.</p></div>}</div>
