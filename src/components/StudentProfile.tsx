@@ -307,6 +307,12 @@ export function StudentProfile({ studentId, name, attempts, lessons, games, lear
     }));
     updateReport(report.id, { attachmentDataUrls: [...report.attachmentDataUrls, ...images] });
   };
+  const copyLatestReport = async () => {
+    const report = [...parentReports].sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime())[0];
+    if (!report) return;
+    const text = [`${report.lessonTitle} · ${new Date(report.completedAt).toLocaleDateString('ru-RU')}`, '', report.summary, report.teacherComment && `Что закрепляем дальше: ${report.teacherComment}`, report.homeworkText && `Домашняя тренировка (по желанию): ${report.homeworkText}`].filter(Boolean).join('\n\n');
+    await navigator.clipboard.writeText(text);
+  };
 
   return <div className="w-full max-w-5xl px-1 pb-6">
     <div className="mb-5 flex flex-wrap items-end justify-between gap-3"><div><div className="text-[10px] font-black uppercase tracking-[.2em] text-pink-600">Профиль ученика</div><h1 className="mt-1 text-2xl font-black text-slate-800 md:text-3xl">Карточка ученика</h1><p className={`mt-1 text-xs font-semibold ${saveState === 'error' ? 'text-rose-600' : 'text-slate-500'}`} role="status">{saveState === 'saved' ? 'Изменения сохранены в облаке' : saveState === 'saving' ? 'Сохраняем изменения…' : 'Не удалось сохранить. Повторяем попытку…'}</p></div><button onClick={onBack} className="inline-flex items-center gap-2 rounded-xl border border-pink-200 bg-white px-3 py-2 text-xs font-black text-pink-700"><ArrowLeft className="h-4 w-4" />К урокам</button></div>
@@ -318,6 +324,7 @@ export function StudentProfile({ studentId, name, attempts, lessons, games, lear
       <CharacterEditor character={character} onChange={onCharacterChange} />
       <div className="mt-5 grid gap-3 sm:grid-cols-3"><Stat icon={<BookOpen className="h-5 w-5" />} label="Уроков пройдено" value={lessonAttempts.length} /><Stat icon={<Award className="h-5 w-5" />} label="Баллов за урок в среднем" value={average} /><Stat icon={<Trophy className="h-5 w-5" />} label="Лучший результат" value={lessonAttempts.length ? Math.max(...lessonAttempts.map(attempt => attempt.points)) : 0} /></div>
 
+      {profileTab === 'reports' && parentReports.length > 0 && <button type="button" onClick={() => void copyLatestReport()} className="mt-5 rounded-xl bg-violet-600 px-4 py-2 text-xs font-black text-white">Скопировать последний отчёт</button>}
       <section className="mt-7 rounded-2xl border border-sky-100 bg-sky-50/50 p-4 md:p-5">
         <div className="inline-flex rounded-xl border border-sky-100 bg-white p-1 text-xs font-black">
           <button type="button" onClick={() => setProfileTab('letters')} className={`rounded-lg px-3 py-2 transition ${profileTab === 'letters' ? 'bg-sky-600 text-white shadow-sm' : 'text-slate-500 hover:bg-sky-50'}`}>Буквы</button>
