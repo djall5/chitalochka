@@ -54,17 +54,19 @@ export interface StudentRecord {
 }
 
 export function createParentReport(lesson: LessonData, attempt: LessonAttempt, games: GameLibraryItem[]): ParentReport {
-  const gameKeys = lessonGameOrder(lesson).map(id => {
+  const lessonGames = lessonGameOrder(lesson).map(id => {
     const sourceId = lesson.gameInstances?.[id]?.sourceGameId || id;
-    return games.find(game => game.id === sourceId)?.stepKey || DEFAULT_GAME_LIBRARY.find(game => game.id === sourceId)?.stepKey;
+    const stepKey = games.find(game => game.id === sourceId)?.stepKey || DEFAULT_GAME_LIBRARY.find(game => game.id === sourceId)?.stepKey;
+    return { stepKey, config: lesson.gameInstances?.[id]?.config[stepKey as keyof LessonData] as unknown as Record<string, unknown> | undefined };
   });
+  const gameKeys = lessonGames.map(game => game.stepKey);
   const target = lesson.targetLetter?.trim();
-  const parts: string[] = [];
-  if (target) parts.push(`закреплял${target.length > 1 ? ' сочетание' : ' букву'} ${target}`);
-  if (gameKeys.some(key => ['step6', 'step7', 'step8', 'step14', 'step16', 'step17'].includes(key || ''))) parts.push('отрабатывал чтение слов и понимание прочитанного');
-  if (gameKeys.some(key => ['step1', 'step2', 'step11', 'step12'].includes(key || ''))) parts.push('читал и закреплял слоги');
-  if (gameKeys.some(key => ['step3', 'step5', 'step10'].includes(key || ''))) parts.push('повторял знакомые буквы в игровых заданиях');
-  const summary = `Сегодня ${lesson.title ? `на занятии «${lesson.title}» ` : ''}${parts.length ? parts.join(', ') : 'выполнял игровые задания на чтение и внимание'}.`;
+  const values = (keys: string[]) => [...new Set(lessonGames.flatMap(({ config }) => keys.flatMap(key => Array.isArray(config?.[key]) ? config?.[key] as unknown[] : [config?.[key]])).map(value => typeof value === 'string' ? value.trim() : '').filter(Boolean))].slice(0, 5);
+  const syllables = values(['syllables', 'vowels', 'consonants']);
+  const cards = lessonGames.flatMap(({ config }) => Array.isArray(config?.cards) ? config.cards as Array<Record<string, unknown>> : []).map(card => String(card.displayWord || card.speakWord || '')).filter(Boolean).slice(0, 5);
+  const reading = gameKeys.some(key => ['step6', 'step7', 'step8', 'step14', 'step16', 'step17'].includes(key || ''));
+  const details = [target && `изучал${target.length > 1 ? ' сочетание' : ' букву'} ${target}`, syllables.length && `читал слоги: ${syllables.join(', ')}`, cards.length && `отрабатывал чтение слов: ${cards.join(', ')}`, reading && !cards.length && 'отрабатывал чтение слов и понимание прочитанного'].filter(Boolean);
+  const summary = `Сегодня ${lesson.title ? `на занятии «${lesson.title}» ` : ''}${details.length ? details.join('; ') : 'выполнял игровые задания на чтение и внимание'}.`;
   return { id: crypto.randomUUID(), lessonId: lesson.id, lessonTitle: lesson.title, completedAt: attempt.completedAt, createdAt: new Date().toISOString(), summary, teacherComment: '', homeworkText: '', attachmentDataUrls: [] };
 }
 
